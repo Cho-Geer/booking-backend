@@ -1,0 +1,361 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType {
+  CUSTOMER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationType {
+  SMS
+  EMAIL
+  WECHAT
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum SettingType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+enum SettingCategory {
+  GENERAL
+  SECURITY
+  BUSINESS
+  SYSTEM
+}
+
+model User {
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String         @db.VarChar(100)
+  phone             String         @unique @db.VarChar(20)
+  phoneHash         String         @unique @map("phone_hash") @db.VarChar(64)
+  email             String?        @db.VarChar(255)
+  wechat            String?        @db.VarChar(100)
+  verificationCode  String?        @map("verification_code") @db.VarChar(6)
+  codeExpiresAt     DateTime?      @map("code_expires_at")
+  isVerified        Boolean        @default(false) @map("is_verified")
+  userType          UserType       @default(CUSTOMER) @map("user_type")
+  status            UserStatus     @default(ACTIVE)
+  lastLoginAt       DateTime?      @map("last_login_at")
+  loginCount        Int            @default(0) @map("login_count")
+  ipAddress         String?        @map("ip_address") @db.Inet
+  userAgent         String?        @map("user_agent") @db.Text
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  sessions          UserSession[]
+  appointments      Appointment[]
+  notifications     Notification[]
+  appointmentHistory AppointmentHistory[]
+  activityLogs      ActivityLog[]
+  blockedSlots      BlockedTimeSlot[]
+  systemLogs        SystemLog[]
+
+  @@index([phoneHash])
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model UserSession {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @map("user_id") @db.Uuid
+  sessionToken         String    @unique @map("session_token") @db.VarChar(255)
+  refreshToken         String?   @unique @map("refresh_token") @db.VarChar(255)
+  expiresAt            DateTime  @map("expires_at")
+  refreshExpiresAt     DateTime? @map("refresh_expires_at")
+  ipAddress            String?   @map("ip_address") @db.Inet
+  userAgent            String?   @map("user_agent") @db.Text
+  deviceInfo           Json?     @map("device_info") @db.JsonB
+  isActive             Boolean   @default(true) @map("is_active")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionToken])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+/**
+ * 时间段配置模型
+ * 定义可预约的时间段
+ */
+model TimeSlot {
+  id              String   @id @default(uuid()) @db.Uuid
+  slotTime        String   @db.VarChar(8) // HH:mm:ss格式
+  durationMinutes Int      @default(30)
+  isActive        Boolean  @default(true)
+  displayOrder    Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // 关联关系
+  appointments    Appointment[]
+  blockedSlots    BlockedTimeSlot[]
+  
+  @@unique([slotTime])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@map("time_slots")
+}
+
+/**
+ * 预约记录模型
+ * 存储用户预约信息
+ */
+model Appointment {
+  id                  String            @id @default(uuid()) @db.Uuid
+  appointmentNumber   String            @unique @db.VarChar(20) // AP-yyyymmdd-0001格式
+  userId              String?           @db.Uuid
+  appointmentDate     DateTime          @db.Date
+  timeSlotId          String            @db.Uuid
+  serviceId           String?           @db.Uuid
+  status              AppointmentStatus @default(PENDING)
+  
+  // 用户信息快照
+  customerName        String            @db.VarChar(100)
+  customerPhone       String            @db.VarChar(20) // 加密存储
+  customerEmail       String?           @db.VarChar(255)
+  customerWechat      String?           @db.VarChar(100)
+  notes               String?
+  
+  // 系统信息
+  ipAddress           String?           @db.Inet
+  userAgent           String?
+  confirmationSent    Boolean           @default(false)
+  reminderSent        Boolean           @default(false)
+  
+  // 时间记录
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  confirmedAt         DateTime?
+  cancelledAt         DateTime?
+  completedAt         DateTime?
+  
+  // 关联关系
+  user                User?             @relation(fields: [userId], references: [id])
+  timeSlot            TimeSlot          @relation(fields: [timeSlotId], references: [id])
+  service             Service?          @relation(fields: [serviceId], references: [id])
+  history             AppointmentHistory[]
+  notifications       Notification[]
+  
+  @@index([userId])
+  @@index([appointmentDate])
+  @@index([timeSlotId])
+  @@index([status])
+  @@index([appointmentNumber])
+  @@map("appointments")
+}
+
+/**
+ * 预约操作枚举
+ */
+enum AppointmentAction {
+  CREATE
+  UPDATE
+  CONFIRM
+  CANCEL
+  COMPLETE
+}
+
+model AppointmentHistory {
+  id               String              @id @default(uuid()) @db.Uuid
+  appointmentId    String              @map("appointment_id") @db.Uuid
+  action           String              @db.VarChar(50)
+  previousStatus   String?             @map("previous_status") @db.VarChar(20)
+  newStatus        String?             @map("new_status") @db.VarChar(20)
+  changedBy        String?             @map("changed_by") @db.Uuid
+  changeReason     String?             @map("change_reason") @db.Text
+  metadata         Json?               @db.JsonB
+  createdAt        DateTime            @default(now()) @map("created_at")
+
+  appointment      Appointment         @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user             User?               @relation(fields: [changedBy], references: [id])
+
+  @@index([appointmentId])
+  @@index([createdAt])
+  @@map("appointment_history")
+}
+
+model SystemSetting {
+  id            String         @id @default(uuid()) @db.Uuid
+  settingKey    String         @unique @map("setting_key") @db.VarChar(100)
+  settingValue  String?        @map("setting_value") @db.Text
+  settingType   SettingType    @default(STRING) @map("setting_type")
+  description   String?        @db.Text
+  isPublic      Boolean        @default(false) @map("is_public")
+  category      SettingCategory @default(GENERAL)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+model BlockedTimeSlot {
+  id            String    @id @default(uuid()) @db.Uuid
+  blockedDate   DateTime  @map("blocked_date") @db.Date
+  timeSlotId    String?   @map("time_slot_id") @db.Uuid
+  reason        String?   @db.Text
+  blockedBy     String?   @map("blocked_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  expiresAt     DateTime? @map("expires_at")
+  isActive      Boolean   @default(true) @map("is_active")
+
+  timeSlot      TimeSlot? @relation(fields: [timeSlotId], references: [id])
+  user          User?     @relation(fields: [blockedBy], references: [id])
+
+  @@index([blockedDate])
+  @@index([isActive])
+  @@map("blocked_time_slots")
+}
+
+model Notification {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  appointmentId String?             @map("appointment_id") @db.Uuid
+  type          NotificationType
+  title         String              @db.VarChar(200)
+  content       String              @db.Text
+  isRead        Boolean             @default(false) @map("is_read")
+  status        NotificationStatus  @default(PENDING)
+  scheduledFor  DateTime?           @map("scheduled_for")
+  sentAt        DateTime?           @map("sent_at")
+  readAt        DateTime?           @map("read_at")
+  metadata      Json?               @db.JsonB
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointment   Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([appointmentId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+
+model ActivityLog {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+  action        String    @db.VarChar(100)
+  resourceType  String?   @map("resource_type") @db.VarChar(50)
+  resourceId    String?   @map("resource_id") @db.Uuid
+  ipAddress     String?   @map("ip_address") @db.VarChar(45)
+  userAgent     String?   @map("user_agent") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user          User?     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([resourceType, resourceId])
+  @@map("activity_logs")
+}
+
+model SystemLog {
+  id            String    @id @default(uuid()) @db.Uuid
+  level         String    @db.VarChar(20)
+  message       String    @db.Text
+  context       Json?     @db.JsonB
+  userId        String?   @map("user_id") @db.Uuid
+  ipAddress     String?   @map("ip_address") @db.VarChar(45)
+  userAgent     String?   @map("user_agent") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user          User?     @relation(fields: [userId], references: [id])
+
+  @@index([level])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("system_logs")
+}
+
+model AppointmentStatistic {
+  id                     String   @id @default(uuid()) @db.Uuid
+  statDate               DateTime @unique @db.Date
+  totalAppointments      Int      @default(0) @map("total_appointments")
+  confirmedAppointments  Int      @default(0) @map("confirmed_appointments")
+  cancelledAppointments  Int      @default(0) @map("cancelled_appointments")
+  completedAppointments  Int      @default(0) @map("completed_appointments")
+  newUsers               Int      @default(0)
+  returningUsers         Int      @default(0)
+  peakHour               String?  @db.VarChar(5)
+  noShowCount            Int      @default(0) @map("no_show_count")
+  averageLeadTimeHours   Float?   @map("average_lead_time_hours")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@index([statDate])
+  @@map("appointment_statistics")
+}
+
+model ServiceCategory {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(50)
+  description String?
+  iconUrl     String?   @map("icon_url") @db.VarChar(255)
+  isActive    Boolean   @default(true) @map("is_active")
+  displayOrder Int?      @map("display_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  services    Service[]
+
+  @@index([isActive])
+  @@index([displayOrder])
+  @@map("service_categories")
+}
+
+model Service {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(100)
+  description String?
+  durationMinutes Int    @map("duration_minutes") @default(30)
+  price       Float?
+  imageUrl    String    @map("image_url") @db.VarChar(255)
+  categoryId  String?   @map("category_id") @db.Uuid
+  isActive    Boolean   @default(true) @map("is_active")
+  displayOrder Int?     @map("display_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  category    ServiceCategory? @relation(fields: [categoryId], references: [id])
+  appointments Appointment[]
+
+  @@index([isActive])
+  @@index([categoryId])
+  @@index([displayOrder])
+  @@map("services")
+}
