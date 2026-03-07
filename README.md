@@ -8,7 +8,11 @@ This project demonstrates how to build a scalable backend system with authentica
 
 # Overview
 
-This backend service provides APIs for a booking management system.
+This project demonstrates how to build a scalable backend service using NestJS.
+
+The system is designed as a CRM-style booking platform that supports authentication, booking management, real-time communication, and API documentation.
+
+The architecture follows a modular and layered design to ensure maintainability and scalability.
 
 Main responsibilities include:
 
@@ -22,6 +26,16 @@ Main responsibilities include:
 The system is designed with modular architecture to support future expansion.
 
 ---
+
+# Features
+
+- JWT based authentication
+- Booking management system
+- RESTful API architecture
+- Real-time updates via WebSocket
+- Redis caching
+- API documentation with Swagger
+- Docker based development environment
 
 # Tech Stack
 
