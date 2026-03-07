@@ -16,6 +16,7 @@ import {
   PhoneNumberExistsException,
   VerificationCodeException,
   DatabaseException,
+  ValidationException,
 } from '../../common/exceptions/business.exceptions';
 import { UsersService } from '../users/users.service';
 import { UserStatus, UserType, UserRole } from '../users/dto/user.dto';
@@ -200,15 +201,29 @@ export class AuthService {
    */
   async sendVerificationCode(phoneNumber: string): Promise<ApiResponseDto<void>> {
     try {
-      const verificationCode = this.generateVerificationCode();
-      
-      // 保存验证码到数据库
-      await this.saveVerificationCode(phoneNumber, verificationCode);
-      
-      // TODO: 集成短信服务发送验证码
-      this.logger.log(`验证码已生成: ${phoneNumber} - ${verificationCode}`);
-      
-      return ApiResponseDto.success(null, '验证码发送成功');
+      // 检查手机号是否已存在
+      const existingUser = await this.usersService.findUserByPhoneNumber(phoneNumber);
+      if (existingUser) {
+        // 生成验证码
+        const verificationCode = this.generateVerificationCode();
+        
+        // 保存验证码到数据库
+        await this.saveVerificationCode(phoneNumber, verificationCode);
+
+        // TODO: 集成短信服务发送验证码
+        this.logger.log(`验证码已生成: ${phoneNumber} - ${verificationCode}`);
+        
+        return ApiResponseDto.success(null, '验证码发送成功');
+      } else {
+        // 手机号不存在，确认手机号是否有效
+        // 如果手机号无效，返回错误提示
+        if (!this.isValidPhoneNumber(phoneNumber)) {
+          throw new ValidationException('手机号格式无效');
+        }
+
+        // 返回前端，使其跳转到注册页面
+        return ApiResponseDto.success(null, '手机号不存在，请先注册');
+      }
     } catch (error) {
       this.logger.error(`发送验证码失败: ${error.message}`, error.stack);
       throw new DatabaseException('发送验证码失败');
@@ -317,6 +332,16 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  /**
+   * 验证手机号格式
+   * @param phoneNumber 手机号
+   * @returns 是否有效
+   */
+  private isValidPhoneNumber(phoneNumber: string): boolean {
+    // 简单的中国大陆手机号正则
+    return /^1[3-9]\d{9}$/.test(phoneNumber);
   }
 
   /**
