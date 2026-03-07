@@ -18,7 +18,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // 全局前缀
-  app.setGlobalPrefix('api');
+  // app.setGlobalPrefix('api');
 
   // 全局管道
   app.useGlobalPipes(
