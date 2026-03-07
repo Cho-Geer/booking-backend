@@ -57,60 +57,46 @@ Dev Tools
 - Jest
 - ESLint
 
----
-
 # System Architecture
 
-The system follows a layered architecture.
-
-Client (Frontend)
-↓
+```
+Frontend (Next.js)
+        │
+        ▼
 REST API (NestJS)
-↓
+        │
+        ▼
 Service Layer
-↓
-Repository Layer (Prisma ORM)
-↓
-PostgreSQL Database
+        │
+        ▼
+Repository Layer (Prisma)
+        │
+        ▼
+PostgreSQL
+```
 
 Additional services:
 
-- Redis cache
-- WebSocket gateway
-- External integrations
-
----
+- Redis (Caching)
+- WebSocket Gateway (Real-time updates)
+- External API integrations
 
 # Project Structure
 
+```
 src
-│
-├── auth
-│ Authentication module
-│
-├── users
-│ User management
-│
-├── bookings
-│ Booking system core logic
-│
-├── notifications
-│ Notification services
-│
-├── websocket
-│ Real-time communication
-│
-├── common
-│ Shared utilities
-│
-└── config
-Application configuration
-
----
+├── auth           # Authentication module
+├── users          # User management
+├── bookings       # Booking system core logic
+├── notifications  # Notification services
+├── websocket      # Real-time communication
+├── common         # Shared utilities
+└── config         # Application configuration
+```
 
 # Core Modules
 
-## Authentication
+## 🔐 Authentication
 
 Handles user authentication and authorization.
 
@@ -122,7 +108,7 @@ Features:
 
 ---
 
-## Booking Module
+## 📅 Booking Module
 
 Core module of the system.
 
@@ -135,7 +121,7 @@ Responsibilities:
 
 ---
 
-## User Module
+## 👤 User Module
 
 Manages user information.
 
@@ -156,13 +142,13 @@ Notifications
 
 Example booking structure:
 
-Booking
+```
 id
 user_id
 booking_time
 status
 created_at
-
+```
 
 Prisma ORM is used to manage database schema and queries.
 
@@ -174,15 +160,34 @@ API documentation is generated with **Swagger**.
 
 Example endpoints:
 
-POST /auth/login
-
-POST /bookings
-
-GET /bookings
-
-GET /users/profile
+```
+POST   /auth/login
+POST   /bookings
+GET    /bookings
+GET    /users/profile
+```
 
 ---
+
+# Architecture Diagram
+
+```
+             ┌──────────────┐
+             │   Frontend   │
+             │   (Next.js)  │
+             └──────┬───────┘
+                    │ REST API
+                    ▼
+             ┌──────────────┐
+             │    NestJS    │
+             │   Backend    │
+             └──────┬───────┘
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+   PostgreSQL                Redis
+   (Database)                (Cache)
+```
 
 # Running the Project
 
