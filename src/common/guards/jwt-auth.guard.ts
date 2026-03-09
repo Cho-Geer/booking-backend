@@ -33,7 +33,7 @@ export class JwtAuthGuard implements CanActivate {
     
     try {
       // 从请求头中提取token
-      const token = this.extractTokenFromHeader(request);
+      const token = this.extractToken(request);
       
       if (!token) {
         throw new AuthenticationException('未提供访问令牌');
@@ -71,7 +71,12 @@ export class JwtAuthGuard implements CanActivate {
   /**
    * 从请求头中提取JWT令牌
    */
-  private extractTokenFromHeader(request: Request): string | null {
+  private extractToken(request: Request): string | null {
+    const cookieToken = (request as Request & { cookies?: Record<string, string> }).cookies?.access_token;
+    if (cookieToken) {
+      return cookieToken;
+    }
+
     const authHeader = request.headers.authorization;
     
     if (!authHeader) {

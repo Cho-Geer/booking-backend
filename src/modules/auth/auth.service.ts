@@ -5,10 +5,12 @@
  * @since 2024
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoginDto, RegisterDto, LoginResponseDto, RefreshTokenDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, LoginResponseDto, RefreshTokenDto, VerificationCodeType } from './dto/auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import {
   AuthenticationException,
@@ -16,11 +18,13 @@ import {
   PhoneNumberExistsException,
   VerificationCodeException,
   DatabaseException,
+  InvalidPhoneNumberException,
   ValidationException,
 } from '../../common/exceptions/business.exceptions';
 import { UsersService } from '../users/users.service';
 import { UserStatus, UserType, UserRole } from '../users/dto/user.dto';
 import * as crypto from 'crypto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -30,6 +34,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private usersService: UsersService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private configService: ConfigService,
   ) {}
 
   /**
@@ -53,7 +59,7 @@ export class AuthService {
       const user = await this.usersService.findUserByPhoneNumber(loginDto.phoneNumber);
 
       if (!user) {
-        throw new ResourceNotFoundException('用户');
+        throw new ResourceNotFoundException('用户不存在，请先注册');
       }
 
       // 检查用户状态
@@ -70,7 +76,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: 'Bearer',
-        expiresIn: 3600, // 1小时
+        expiresIn: Number(this.configService.get('JWT_EXPIRES_IN') || 3600), // 1小时
         user: {
           id: user.id,
           name: user.name,
@@ -111,13 +117,14 @@ export class AuthService {
       // 检查手机号是否已存在
       const existingUser = await this.usersService.findUserByPhoneNumber(registerDto.phoneNumber);
       if (existingUser) {
-        throw new PhoneNumberExistsException(registerDto.phoneNumber);
+        throw new PhoneNumberExistsException('手机号已被注册');
       }
 
       // 创建用户
       const user = await this.usersService.createUser({
         name: registerDto.name,
         phone: registerDto.phoneNumber,
+        email: registerDto.email,
         userType: UserType.CUSTOMER,
         status: UserStatus.ACTIVE,
       });
@@ -131,7 +138,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: 'Bearer',
-        expiresIn: 3600,
+        expiresIn: Number(this.configService.get('JWT_EXPIRES_IN') || 3600),
         user: {
           id: user.id,
           name: user.name,
@@ -160,7 +167,7 @@ export class AuthService {
     try {
       // 验证刷新令牌
       const payload = this.jwtService.verify(refreshTokenDto.refreshToken, {
-        secret: process.env.JWT_SECRET,
+        secret: this.configService.get('JWT_SECRET'),
       });
 
       // 根据用户ID查找用户
@@ -179,7 +186,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: 'Bearer',
-        expiresIn: 3600,
+        expiresIn: Number(this.configService.get('JWT_EXPIRES_IN') || 3600),
         user: {
           id: user.id,
           name: user.name,
@@ -197,34 +204,49 @@ export class AuthService {
   /**
    * 发送验证码
    * @param phoneNumber 手机号
+   * @param type 验证码类型
    * @returns 发送结果
    */
-  async sendVerificationCode(phoneNumber: string): Promise<ApiResponseDto<void>> {
+  async sendVerificationCode(phoneNumber: string, type: VerificationCodeType): Promise<ApiResponseDto<void>> {
     try {
-      // 检查手机号是否已存在
+      // 1. 查询手机号是否已存在
       const existingUser = await this.usersService.findUserByPhoneNumber(phoneNumber);
-      if (existingUser) {
-        // 生成验证码
-        const verificationCode = this.generateVerificationCode();
-        
-        // 保存验证码到数据库
-        await this.saveVerificationCode(phoneNumber, verificationCode);
 
-        // TODO: 集成短信服务发送验证码
-        this.logger.log(`验证码已生成: ${phoneNumber} - ${verificationCode}`);
-        
-        return ApiResponseDto.success(null, '验证码发送成功');
-      } else {
-        // 手机号不存在，确认手机号是否有效
-        // 如果手机号无效，返回错误提示
-        if (!this.isValidPhoneNumber(phoneNumber)) {
-          throw new ValidationException('手机号格式无效');
+      // 2. 根据场景进行不同的预检
+      if (type === VerificationCodeType.REGISTER) {
+        // 【注册场景】：如果用户已存在，报错阻止
+        if (existingUser) {
+          throw new PhoneNumberExistsException(phoneNumber);
         }
-
-        // 返回前端，使其跳转到注册页面
-        return ApiResponseDto.success(null, '手机号不存在，请先注册');
+      } else if (type === VerificationCodeType.LOGIN) {
+        // 【登录场景】：如果用户不存在，报错引导去注册
+        if (!existingUser) {
+          // 这里抛出 404 异常，前端捕获后可自动跳转到注册页
+          throw new ResourceNotFoundException('用户不存在，请先注册');
+        }
+        // 登录场景额外检查：账号是否被禁用
+        if (existingUser.status !== UserStatus.ACTIVE) {
+          throw new AuthenticationException('用户账户已被禁用');
+        }
       }
+
+      // 3. 通用逻辑：生成并保存验证码
+      const verificationCode = this.generateVerificationCode();
+      
+      // 保存验证码到Redis
+      await this.saveVerificationCode(phoneNumber, verificationCode);
+
+      // TODO: 集成短信服务发送验证码
+      this.logger.log(`[${type}] 验证码已生成: ${phoneNumber} - ${verificationCode}`);
+      
+      return ApiResponseDto.success(null, '验证码发送成功');
     } catch (error) {
+      if (error instanceof PhoneNumberExistsException || 
+          error instanceof ResourceNotFoundException ||
+          error instanceof AuthenticationException ||
+          error instanceof InvalidPhoneNumberException) {
+        throw error;
+      }
       this.logger.error(`发送验证码失败: ${error.message}`, error.stack);
       throw new DatabaseException('发送验证码失败');
     }
@@ -317,14 +339,24 @@ export class AuthService {
       role: user.userType,
     };
 
+    // 获取配置值，默认为 3600
+    const jwtExpiresIn = this.configService.get('JWT_EXPIRES_IN') || 3600;
+    const jwtRefreshExpiresIn = this.configService.get('JWT_REFRESH_EXPIRES_IN') || 604800;
+
+    // 辅助处理函数：如果是纯数字字符串则转为数字（秒），否则保留字符串（如 "1d"）
+    const resolveExpiresIn = (val: string | number) => {
+      const num = Number(val);
+      return !isNaN(num) ? num : val;
+    };
+
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_SECRET,
-        expiresIn: '1h',
+        secret: this.configService.get('JWT_SECRET'),
+        expiresIn: resolveExpiresIn(jwtExpiresIn),
       }),
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_SECRET,
-        expiresIn: '7d',
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
+        expiresIn: resolveExpiresIn(jwtRefreshExpiresIn),
       }),
     ]);
 
@@ -354,9 +386,20 @@ export class AuthService {
     phoneNumber: string,
     verificationCode: string,
   ): Promise<boolean> {
-    // TODO: 从数据库验证验证码
-    // 临时实现：所有验证码都返回true
-    this.logger.log(`验证验证码: ${phoneNumber} - ${verificationCode}`);
+    const key = `verification_code:${phoneNumber}`;
+    const storedCode = await this.cacheManager.get<string>(key);
+
+    if (!storedCode) {
+      throw new VerificationCodeException('验证码已过期或不存在');
+    }
+
+    if (storedCode !== verificationCode) {
+      throw new VerificationCodeException('验证码错误');
+    }
+
+    // 验证成功后删除验证码，防止重复使用
+    await this.cacheManager.del(key);
+    
     return true;
   }
 
@@ -369,13 +412,21 @@ export class AuthService {
   }
 
   /**
-   * 保存验证码到数据库
+   * 保存验证码到Redis
    * @param phoneNumber 手机号
    * @param verificationCode 验证码
    */
   private async saveVerificationCode(phoneNumber: string, verificationCode: string): Promise<void> {
-    // TODO: 实现验证码存储逻辑
-    this.logger.log(`保存验证码: ${phoneNumber} - ${verificationCode}`);
+    const key = `verification_code:${phoneNumber}`;
+    // 设置验证码有效期为5分钟 (300秒)
+    // 注意: cache-manager v5+ 使用毫秒作为TTL，而 v4 使用秒
+    // 假设使用的是较新版本，或者根据项目配置调整
+    await this.cacheManager.set(key, verificationCode, 300 * 1000);
+    
+    // 开发环境下打印验证码，方便测试
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.log(`保存验证码: ${phoneNumber} - ${verificationCode}`);
+    }
   }
 
   /**
@@ -386,7 +437,7 @@ export class AuthService {
   async validateToken(token: string): Promise<any> {
     try {
       return this.jwtService.verify(token, {
-        secret: process.env.JWT_SECRET,
+        secret: this.configService.get('JWT_SECRET'),
       });
     } catch (error) {
       this.logger.error(`验证令牌失败: ${error.message}`);

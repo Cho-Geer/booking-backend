@@ -13,9 +13,10 @@ import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-respons
 import { 
   ResourceNotFoundException, 
   PhoneNumberExistsException,
-  DatabaseException 
+  DatabaseException, 
+  ValidationException
 } from '../../common/exceptions/business.exceptions';
-import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class UsersService {
@@ -39,12 +40,24 @@ export class UsersService {
         throw new PhoneNumberExistsException(createUserDto.phone);
       }
 
+      // 检查邮箱是否已存在
+      if (createUserDto.email) {
+        const existingUserByEmail = await this.prisma.user.findUnique({
+          where: { email: createUserDto.email },
+        });
+
+        if (existingUserByEmail) {
+          throw new ValidationException('邮箱已被注册');
+        }
+      }
+
       // 创建用户
       const user = await this.prisma.user.create({
         data: {
           name: createUserDto.name,
           phone: this.maskPhoneNumber(createUserDto.phone),
           phoneHash: this.hashPhoneNumber(createUserDto.phone),
+          email: createUserDto.email,
           userType: createUserDto.userType || 'CUSTOMER',
           status: createUserDto.status || 'ACTIVE',
         },
@@ -109,6 +122,19 @@ export class UsersService {
   async findUserByPhoneNumber(phoneNumber: string): Promise<UserResponseDto | null> {
     const phoneHash = this.hashPhoneNumber(phoneNumber);
     return this.findUserByPhoneHash(phoneHash);
+  }
+
+  /**
+   * 根据邮箱查找用户
+   * @param email 邮箱
+   * @returns 用户信息或null
+   */
+  async findUserByEmail(email: string): Promise<UserResponseDto | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    return user ? this.mapToResponseDto(user) : null;
   }
 
   /**
@@ -341,7 +367,7 @@ export class UsersService {
    * @returns 哈希值
    */
   private hashPhoneNumber(phoneNumber: string): string {
-    return bcrypt.hashSync(phoneNumber, 10);
+    return crypto.createHash('sha256').update(phoneNumber).digest('hex');
   }
 
   /**

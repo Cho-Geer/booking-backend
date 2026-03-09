@@ -37,7 +37,7 @@ import { WebsocketModule } from './common/websocket/websocket.module';
         host: configService.get('REDIS_HOST', 'localhost'),
         port: configService.get('REDIS_PORT', 6379),
         password: configService.get('REDIS_PASSWORD', ''),
-        ttl: 3600, // 默认缓存1小时
+        ttl: Number(configService.get('REDIS_TTL', 3600)), // 默认缓存1小时
         max: 1000, // 最大缓存项数
       }),
       inject: [ConfigService],

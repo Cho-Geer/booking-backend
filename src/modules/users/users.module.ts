@@ -12,16 +12,22 @@ import { UsersController } from './users.controller';
 import { UserAvatarController } from './controllers/user-avatar.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FileUploadModule } from '../../common/file-upload/file-upload.module';
+import { ConfigModule } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
     PrismaModule,
     FileUploadModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-secret-key',
-      signOptions: {
-        expiresIn: process.env.JWT_EXPIRES_IN || '1h',
-      },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: {
+          expiresIn: Number(configService.get('JWT_EXPIRES_IN') || 3600),
+        },
+      }),
+      inject: [ConfigService],
     }),
   ],
   controllers: [UsersController, UserAvatarController],

@@ -11,6 +11,7 @@ import {
   Get,
   Body,
   Query,
+  Res,
   UseGuards,
   UseInterceptors,
   ValidationPipe,
@@ -25,6 +26,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipJwtAuth } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
+import { Response } from 'express';
 
 /**
  * 认证控制器类
@@ -48,8 +50,12 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '验证码错误' })
   @ApiResponse({ status: 404, description: '用户不存在' })
-  async login(@Body(ValidationPipe) loginDto: LoginDto): Promise<ApiResponseDto<LoginResponseDto>> {
+  async login(
+    @Body(ValidationPipe) loginDto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ApiResponseDto<LoginResponseDto>> {
     const result = await this.authService.login(loginDto);
+    this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '登录成功');
   }
 
@@ -64,8 +70,12 @@ export class AuthController {
   @ApiOperation({ summary: '用户注册', description: '新用户注册' })
   @ApiResponse({ status: 201, description: '注册成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '验证码错误或用户已存在' })
-  async register(@Body(ValidationPipe) registerDto: RegisterDto): Promise<ApiResponseDto<LoginResponseDto>> {
+  async register(
+    @Body(ValidationPipe) registerDto: RegisterDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ApiResponseDto<LoginResponseDto>> {
     const result = await this.authService.register(registerDto);
+    this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '注册成功');
   }
 
@@ -83,7 +93,10 @@ export class AuthController {
   async sendVerificationCode(
     @Body(ValidationPipe) sendVerificationCodeDto: SendVerificationCodeDto,
   ): Promise<ApiResponseDto<void>> {
-    await this.authService.sendVerificationCode(sendVerificationCodeDto.phoneNumber);
+    await this.authService.sendVerificationCode(
+      sendVerificationCodeDto.phoneNumber,
+      sendVerificationCodeDto.type
+    );
     return ApiResponseDto.success(null, '验证码发送成功');
   }
 
@@ -100,8 +113,10 @@ export class AuthController {
   @ApiResponse({ status: 401, description: '刷新令牌无效' })
   async refreshToken(
     @Body(ValidationPipe) refreshTokenDto: RefreshTokenDto,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<ApiResponseDto<LoginResponseDto>> {
     const result = await this.authService.refreshToken(refreshTokenDto);
+    this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '令牌刷新成功');
   }
 
@@ -171,5 +186,49 @@ export class AuthController {
   async checkPhoneNumber(@Query('phoneNumber') phoneNumber: string): Promise<ApiResponseDto<{ exists: boolean }>> {
     const exists = await this.authService.checkPhoneNumberExists(phoneNumber);
     return ApiResponseDto.success({ exists }, '检查完成');
+  }
+
+  private setAuthCookies(response: Response, accessToken: string, refreshToken: string): void {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const accessTokenMaxAgeSeconds = this.resolveCookieMaxAgeSeconds(process.env.JWT_EXPIRES_IN, 3600);
+    const refreshTokenMaxAgeSeconds = this.resolveCookieMaxAgeSeconds(process.env.JWT_REFRESH_EXPIRES_IN, 604800);
+    const cookieBaseOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
+      path: '/',
+    };
+
+    response.cookie('access_token', accessToken, {
+      ...cookieBaseOptions,
+      maxAge: accessTokenMaxAgeSeconds * 1000,
+    });
+    response.cookie('refresh_token', refreshToken, {
+      ...cookieBaseOptions,
+      maxAge: refreshTokenMaxAgeSeconds * 1000,
+    });
+  }
+
+  private resolveCookieMaxAgeSeconds(value: string | undefined, defaultValue: number): number {
+    if (!value) {
+      return defaultValue;
+    }
+
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber)) {
+      return asNumber;
+    }
+
+    const matched = value.trim().match(/^(\d+)([smhd])$/i);
+    if (!matched) {
+      return defaultValue;
+    }
+
+    const amount = Number(matched[1]);
+    const unit = matched[2].toLowerCase();
+    if (unit === 's') return amount;
+    if (unit === 'm') return amount * 60;
+    if (unit === 'h') return amount * 3600;
+    return amount * 86400;
   }
 }

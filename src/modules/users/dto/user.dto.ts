@@ -5,7 +5,7 @@
  * @since 2024
  */
 
-import { IsString, IsEnum, IsOptional, IsDate, IsBoolean, IsPhoneNumber, IsNotEmpty, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsDate, IsBoolean, IsPhoneNumber, IsNotEmpty, MinLength, MaxLength, Matches, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { UserType as PrismaUserType, UserStatus as PrismaUserStatus } from '@prisma/client';
@@ -44,6 +44,12 @@ export class CreateUserDto {
   @IsPhoneNumber('CN', { message: '手机号格式不正确' })
   @IsNotEmpty({ message: '手机号不能为空' })
   phone: string;
+
+  @ApiProperty({ description: '邮箱', example: 'zhangsan@example.com', required: false })
+  @IsOptional()
+  @IsString({ message: '邮箱必须是字符串' })
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email?: string;
 
   @ApiProperty({ description: '用户类型', enum: UserType, required: false, default: UserType.CUSTOMER })
   @IsEnum(UserType, { message: '无效的用户类型' })

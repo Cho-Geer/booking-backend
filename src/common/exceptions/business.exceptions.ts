@@ -65,7 +65,7 @@ export class AuthorizationException extends BusinessException {
  */
 export class ResourceNotFoundException extends BusinessException {
   constructor(resource = '资源', details?: any) {
-    super('RESOURCE_NOT_FOUND', `${resource}不存在`, HttpStatus.NOT_FOUND, details);
+    super('RESOURCE_NOT_FOUND', `${resource}`, HttpStatus.NOT_FOUND, details);
   }
 }
 
@@ -120,6 +120,15 @@ export class UserException extends BusinessException {
 export class PhoneNumberExistsException extends BusinessException {
   constructor(phoneNumber: string) {
     super('PHONE_NUMBER_EXISTS', `手机号 ${phoneNumber} 已存在`, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 手机号格式无效异常
+ */
+export class InvalidPhoneNumberException extends BusinessException {
+  constructor(phoneNumber: string) {
+    super('INVALID_PHONE_NUMBER', `手机号 ${phoneNumber} 格式无效`, HttpStatus.BAD_REQUEST);
   }
 }
 

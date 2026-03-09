@@ -10,15 +10,21 @@ import { JwtModule } from '@nestjs/jwt';
 import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ConfigModule } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
     PrismaModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-secret-key',
-      signOptions: {
-        expiresIn: process.env.JWT_EXPIRES_IN || '1h',
-      },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: {
+          expiresIn: Number(configService.get('JWT_EXPIRES_IN') || 3600),
+        },
+      }),
+      inject: [ConfigService],
     }),
   ],
   controllers: [BookingsController],
