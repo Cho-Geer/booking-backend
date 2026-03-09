@@ -12,11 +12,13 @@ import {
   Body,
   Query,
   Res,
+  Req,
   UseGuards,
   UseInterceptors,
   ValidationPipe,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -26,7 +28,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipJwtAuth } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 
 /**
  * 认证控制器类
@@ -112,10 +114,18 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '令牌刷新成功', type: LoginResponseDto })
   @ApiResponse({ status: 401, description: '刷新令牌无效' })
   async refreshToken(
-    @Body(ValidationPipe) refreshTokenDto: RefreshTokenDto,
+    @Body() body: any, // 暂时放宽类型以支持从Cookie读取
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ApiResponseDto<LoginResponseDto>> {
-    const result = await this.authService.refreshToken(refreshTokenDto);
+    // 优先从Cookie获取refresh_token，其次从Body获取
+    const refreshToken = request.cookies?.['refresh_token'] || body.refreshToken;
+    
+    if (!refreshToken) {
+      throw new UnauthorizedException('刷新令牌不存在');
+    }
+
+    const result = await this.authService.refreshToken({ refreshToken });
     this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '令牌刷新成功');
   }
@@ -131,8 +141,14 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '用户登出', description: '用户登出系统' })
   @ApiResponse({ status: 200, description: '登出成功' })
-  async logout(@CurrentUser() currentUser: any): Promise<ApiResponseDto<void>> {
-    await this.authService.logout(currentUser.userId);
+  async logout(
+    @CurrentUser() currentUser: any,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ApiResponseDto<void>> {
+    await this.authService.logout(currentUser.id);
+    // 清除Cookie
+    response.clearCookie('access_token');
+    response.clearCookie('refresh_token');
     return ApiResponseDto.success(null, '登出成功');
   }
 
@@ -147,7 +163,7 @@ export class AuthController {
   @ApiOperation({ summary: '获取用户信息', description: '获取当前登录用户的详细信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
   async getProfile(@CurrentUser() currentUser: any): Promise<ApiResponseDto<any>> {
-    const user = await this.authService.getUserProfile(currentUser.userId);
+    const user = await this.authService.getUserProfile(currentUser.id);
     return ApiResponseDto.success(user, '获取用户信息成功');
   }
 
@@ -165,7 +181,7 @@ export class AuthController {
   async verifyToken(@CurrentUser() currentUser: any): Promise<ApiResponseDto<any>> {
     return ApiResponseDto.success(
       {
-        userId: currentUser.userId,
+        userId: currentUser.id,
         valid: true,
         expiresAt: currentUser.exp * 1000, // 转换为毫秒时间戳
       },

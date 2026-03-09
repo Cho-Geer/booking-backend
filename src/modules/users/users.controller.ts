@@ -165,7 +165,7 @@ export class UsersController {
   async getCurrentUserProfile(
     @CurrentUser() currentUser: any,
   ): Promise<ApiResponseDto<UserResponseDto>> {
-    const user = await this.usersService.findUserById(currentUser.userId);
+    const user = await this.usersService.findUserById(currentUser.id);
     return ApiResponseDto.success(user, '获取当前用户信息成功');
   }
 
