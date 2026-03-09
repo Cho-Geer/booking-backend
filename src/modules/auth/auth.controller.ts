@@ -148,9 +148,12 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登出成功' })
   async logout(
     @CurrentUser() currentUser: any,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ApiResponseDto<void>> {
-    await this.authService.logout(currentUser.id);
+    // 从Cookie获取refresh_token
+    const refreshToken = request.cookies?.['refresh_token'];
+    await this.authService.logout(currentUser.id, refreshToken);
     // 清除Cookie
     response.clearCookie('access_token');
     response.clearCookie('refresh_token');

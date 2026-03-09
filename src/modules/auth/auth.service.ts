@@ -165,9 +165,17 @@ export class AuthService {
    */
   async refreshToken(refreshTokenDto: RefreshTokenDto): Promise<LoginResponseDto> {
     try {
+      // 检查刷新令牌是否在黑名单中
+      const tokenHash = crypto.createHash('sha256').update(refreshTokenDto.refreshToken).digest('hex');
+      const isBlacklisted = await this.cacheManager.get(`blacklist:${tokenHash}`);
+      
+      if (isBlacklisted) {
+        throw new AuthenticationException('刷新令牌已被吊销');
+      }
+      
       // 验证刷新令牌
       const payload = this.jwtService.verify(refreshTokenDto.refreshToken, {
-        secret: this.configService.get('JWT_SECRET'),
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
       });
 
       // 根据用户ID查找用户
@@ -255,17 +263,50 @@ export class AuthService {
   /**
    * 用户登出
    * @param userId 用户ID
+   * @param refreshToken 刷新令牌
    * @returns 登出结果
    */
-  async logout(userId: string): Promise<ApiResponseDto<void>> {
+  async logout(userId: string, refreshToken: string): Promise<ApiResponseDto<void>> {
     try {
-      // TODO: 将刷新令牌加入黑名单
+      // 将刷新令牌加入黑名单
+      await this.addRefreshTokenToBlacklist(refreshToken);
       this.logger.log(`用户登出: ${userId}`);
       
       return ApiResponseDto.success(null, '登出成功');
     } catch (error) {
       this.logger.error(`用户登出失败: ${error.message}`, error.stack);
       throw new DatabaseException('登出失败');
+    }
+  }
+
+  /**
+   * 将刷新令牌加入黑名单
+   * @param refreshToken 刷新令牌
+   */
+  private async addRefreshTokenToBlacklist(refreshToken: string): Promise<void> {
+    try {
+      if (!refreshToken) {
+        return;
+      }
+      
+      // 验证刷新令牌并获取过期时间
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
+      });
+      
+      // 计算令牌剩余有效期（秒）
+      const expiresAt = payload.exp;
+      const now = Math.floor(Date.now() / 1000);
+      const ttl = expiresAt - now;
+      
+      if (ttl > 0) {
+        // 使用Redis存储黑名单，键为令牌哈希，值为1，过期时间为令牌剩余有效期
+        const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        await this.cacheManager.set(`blacklist:${tokenHash}`, 1, ttl * 1000);
+      }
+    } catch (error) {
+      // 令牌无效时忽略错误，不影响登出流程
+      this.logger.warn(`无效的刷新令牌: ${error.message}`);
     }
   }
 

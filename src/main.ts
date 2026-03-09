@@ -23,7 +23,7 @@ async function bootstrap() {
 
   // CORS配置
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: [process.env.FRONTEND_URL, 'http://localhost:3001'],
     credentials: true,
   });
   app.use(cookieParser());
