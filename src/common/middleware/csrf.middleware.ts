@@ -3,10 +3,10 @@ import { timingSafeEqual } from 'crypto';
 
 const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const csrfBypassPaths = new Set([
-  '/v1/auth/login',
-  '/v1/auth/register',
-  '/v1/auth/send-verification-code',
-  '/v1/auth/refresh',
+  '/auth/login',
+  '/auth/register',
+  '/auth/send-verification-code',
+  '/auth/refresh',
 ]);
 
 const safeCompare = (left: string, right: string): boolean => {
