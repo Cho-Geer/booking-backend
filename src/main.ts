@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
+import { csrfProtectionMiddleware } from './common/middleware/csrf.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -26,6 +27,9 @@ async function bootstrap() {
     credentials: true,
   });
   app.use(cookieParser());
+  if (process.env.CSRF_ENABLED === 'true') {
+    app.use('/v1', csrfProtectionMiddleware);
+  }
 
   // Swagger文档配置
   const config = new DocumentBuilder()

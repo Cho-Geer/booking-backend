@@ -21,6 +21,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto, SendVerificationCodeDto, RefreshTokenDto, LoginResponseDto } from './dto/auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
@@ -29,6 +30,7 @@ import { SkipJwtAuth } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { Response, Request } from 'express';
+import { randomBytes } from 'crypto';
 
 /**
  * 认证控制器类
@@ -38,7 +40,10 @@ import { Response, Request } from 'express';
 @Controller('auth')
 @UseInterceptors(TransformInterceptor)
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * 用户登录
@@ -149,6 +154,7 @@ export class AuthController {
     // 清除Cookie
     response.clearCookie('access_token');
     response.clearCookie('refresh_token');
+    response.clearCookie('csrf_token');
     return ApiResponseDto.success(null, '登出成功');
   }
 
@@ -206,14 +212,27 @@ export class AuthController {
 
   private setAuthCookies(response: Response, accessToken: string, refreshToken: string): void {
     const isProduction = process.env.NODE_ENV === 'production';
+    const configuredSameSite = (this.configService.get<string>('COOKIE_SAME_SITE') || 'lax').toLowerCase();
+    const sameSite = configuredSameSite === 'none' ? 'none' : 'lax';
+    const secure = sameSite === 'none' ? true : isProduction;
+    const cookieDomain = this.configService.get<string>('COOKIE_DOMAIN');
     const accessTokenMaxAgeSeconds = this.resolveCookieMaxAgeSeconds(process.env.JWT_EXPIRES_IN, 3600);
     const refreshTokenMaxAgeSeconds = this.resolveCookieMaxAgeSeconds(process.env.JWT_REFRESH_EXPIRES_IN, 604800);
-    const cookieBaseOptions = {
+    const cookieBaseOptions: {
+      httpOnly: true;
+      secure: boolean;
+      sameSite: 'none' | 'lax';
+      path: '/';
+      domain?: string;
+    } = {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
+      secure,
+      sameSite,
       path: '/',
     };
+    if (cookieDomain) {
+      cookieBaseOptions.domain = cookieDomain;
+    }
 
     response.cookie('access_token', accessToken, {
       ...cookieBaseOptions,
@@ -221,6 +240,14 @@ export class AuthController {
     });
     response.cookie('refresh_token', refreshToken, {
       ...cookieBaseOptions,
+      maxAge: refreshTokenMaxAgeSeconds * 1000,
+    });
+    response.cookie('csrf_token', randomBytes(32).toString('hex'), {
+      httpOnly: false,
+      secure,
+      sameSite,
+      path: '/',
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
       maxAge: refreshTokenMaxAgeSeconds * 1000,
     });
   }
