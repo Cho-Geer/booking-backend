@@ -5,12 +5,15 @@
  * @since 2024
  */
 
-import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, Logger, Inject } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticationException } from '../exceptions/business.exceptions';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -19,7 +22,8 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
-    private reflector: Reflector
+    private reflector: Reflector,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -97,6 +101,14 @@ export class JwtAuthGuard implements CanActivate {
    */
   private async verifyToken(token: string): Promise<any> {
     try {
+      // 检查令牌是否在黑名单中
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const isBlacklisted = await this.cacheManager.get(`blacklist:${tokenHash}`);
+      
+      if (isBlacklisted) {
+        throw new AuthenticationException('访问令牌已被吊销');
+      }
+      
       return await this.jwtService.verifyAsync(token, {
         secret: process.env.JWT_SECRET,
       });
@@ -105,6 +117,8 @@ export class JwtAuthGuard implements CanActivate {
         throw new AuthenticationException('访问令牌已过期');
       } else if (error.name === 'JsonWebTokenError') {
         throw new AuthenticationException('访问令牌无效');
+      } else if (error instanceof AuthenticationException) {
+        throw error;
       } else {
         throw new AuthenticationException('令牌验证失败');
       }

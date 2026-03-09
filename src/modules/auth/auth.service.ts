@@ -264,12 +264,15 @@ export class AuthService {
    * 用户登出
    * @param userId 用户ID
    * @param refreshToken 刷新令牌
+   * @param accessToken 访问令牌
    * @returns 登出结果
    */
-  async logout(userId: string, refreshToken: string): Promise<ApiResponseDto<void>> {
+  async logout(userId: string, refreshToken: string, accessToken: string): Promise<ApiResponseDto<void>> {
     try {
       // 将刷新令牌加入黑名单
       await this.addRefreshTokenToBlacklist(refreshToken);
+      // 将访问令牌加入黑名单
+      await this.addAccessTokenToBlacklist(accessToken);
       this.logger.log(`用户登出: ${userId}`);
       
       return ApiResponseDto.success(null, '登出成功');
@@ -307,6 +310,37 @@ export class AuthService {
     } catch (error) {
       // 令牌无效时忽略错误，不影响登出流程
       this.logger.warn(`无效的刷新令牌: ${error.message}`);
+    }
+  }
+
+  /**
+   * 将访问令牌加入黑名单
+   * @param accessToken 访问令牌
+   */
+  private async addAccessTokenToBlacklist(accessToken: string): Promise<void> {
+    try {
+      if (!accessToken) {
+        return;
+      }
+      
+      // 验证访问令牌并获取过期时间
+      const payload = this.jwtService.verify(accessToken, {
+        secret: this.configService.get('JWT_SECRET'),
+      });
+      
+      // 计算令牌剩余有效期（秒）
+      const expiresAt = payload.exp;
+      const now = Math.floor(Date.now() / 1000);
+      const ttl = expiresAt - now;
+      
+      if (ttl > 0) {
+        // 使用Redis存储黑名单，键为令牌哈希，值为1，过期时间为令牌剩余有效期
+        const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+        await this.cacheManager.set(`blacklist:${tokenHash}`, 1, ttl * 1000);
+      }
+    } catch (error) {
+      // 令牌无效时忽略错误，不影响登出流程
+      this.logger.warn(`无效的访问令牌: ${error.message}`);
     }
   }
 

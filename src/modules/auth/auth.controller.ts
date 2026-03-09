@@ -151,9 +151,10 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ApiResponseDto<void>> {
-    // 从Cookie获取refresh_token
+    // 从Cookie获取refresh_token和access_token
     const refreshToken = request.cookies?.['refresh_token'];
-    await this.authService.logout(currentUser.id, refreshToken);
+    const accessToken = request.cookies?.['access_token'];
+    await this.authService.logout(currentUser.id, refreshToken, accessToken);
     // 清除Cookie
     response.clearCookie('access_token');
     response.clearCookie('refresh_token');
