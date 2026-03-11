@@ -171,6 +171,8 @@ model Appointment {
   @@index([userId])
   @@index([appointmentDate])
   @@index([timeSlotId])
+  @@unique([userId, appointmentDate, timeSlotId])
+  @@unique([serviceId, appointmentDate, timeSlotId])
   @@index([status])
   @@index([appointmentNumber])
   @@map("appointments")

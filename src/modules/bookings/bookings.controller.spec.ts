@@ -7,6 +7,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { TimeSlotsService } from '../time-slots/time-slots.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
@@ -85,6 +86,10 @@ describe('BookingsController', () => {
     getBookingStats: jest.fn(),
   };
 
+  const mockTimeSlotsService = {
+    getAvailability: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BookingsController],
@@ -92,6 +97,10 @@ describe('BookingsController', () => {
         {
           provide: BookingsService,
           useValue: mockBookingsService,
+        },
+        {
+          provide: TimeSlotsService,
+          useValue: mockTimeSlotsService,
         },
       ],
     })

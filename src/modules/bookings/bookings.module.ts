@@ -8,6 +8,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { BookingsService } from './bookings.service';
+import { TimeSlotsService } from '../time-slots/time-slots.service';
 import { BookingsController } from './bookings.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
@@ -28,7 +29,7 @@ import { ConfigService } from '@nestjs/config';
     }),
   ],
   controllers: [BookingsController],
-  providers: [BookingsService],
-  exports: [BookingsService], // 导出服务，供其他模块使用
+  providers: [BookingsService, TimeSlotsService],
+  exports: [BookingsService, TimeSlotsService], // 导出服务，供其他模块使用
 })
 export class BookingsModule {}

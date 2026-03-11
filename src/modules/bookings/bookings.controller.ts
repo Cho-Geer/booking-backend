@@ -24,6 +24,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
+import { TimeSlotsService } from '../time-slots/time-slots.service';
+import { TimeSlotAvailabilityDto, TimeSlotAvailabilityResponseDto } from '../time-slots/dto/time-slot.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators';
@@ -52,7 +54,10 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 export class BookingsController {
   private readonly logger = new Logger(BookingsController.name);
 
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly timeSlotsService: TimeSlotsService
+  ) {}
 
   /**
    * 创建预约
@@ -90,13 +95,9 @@ export class BookingsController {
    * @param user 当前用户信息
    * @returns 预约列表
    */
-  @Get()
+  @Get('all')
   @ApiOperation({ summary: '获取预约列表', description: '根据条件查询预约列表' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '查询成功',
-    type: AppointmentListResponseDto,
-  })
+  @ApiResponse({status: HttpStatus.OK, description: '查询成功', type: AppointmentListResponseDto})
   @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
   @ApiQuery({ name: 'limit', required: false, description: '每页数量', example: 10 })
   async findAll(
@@ -121,6 +122,41 @@ export class BookingsController {
       this.logger.error(`查询预约列表失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * 获取可用时间段
+   * @param query 查询参数
+   * @returns 可用时间段列表
+   */
+  @Get('available-slots')
+  @ApiOperation({ summary: '获取可用时间段', description: '获取指定日期的可用时间段' })
+  @ApiResponse({ status: 200, description: '获取成功' })
+  @ApiResponse({ status: 400, description: '参数错误' })
+  async getAvailableSlots(@Query() query: TimeSlotAvailabilityDto) {
+    return this.timeSlotsService.getAvailability(query);
+  }
+
+  /**
+   * 获取预约统计信息
+   * @param user 当前用户信息
+   * @returns 统计信息
+   */
+  @Get('stats/summary')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '获取预约统计', description: '获取预约相关统计信息' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: '查询成功',
+    type: AppointmentStatisticsDto,
+  })
+  async getStats(
+    @CurrentUser() user: any,
+  ): Promise<ApiResponseDto<AppointmentStatisticsDto>> {
+    this.logger.log(`管理员 ${user.id} 查询预约统计`);
+    
+    const stats = await this.bookingsService.getBookingStats();
+    return ApiResponseDto.success(stats, '获取预约统计信息成功');
   }
 
   /**
@@ -239,7 +275,7 @@ export class BookingsController {
    * @param user 当前用户信息
    * @returns 取消结果
    */
-  @Post(':id/cancel')
+  @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)  // 明确指定返回200状态码
   @ApiOperation({ summary: '取消预约', description: '取消指定的预约' })
   @ApiResponse({ status: HttpStatus.OK, description: '取消成功' })
@@ -271,27 +307,5 @@ export class BookingsController {
       }
       throw new ResourceNotFoundException('预约');
     }
-  }
-
-  /**
-   * 获取预约统计信息
-   * @param user 当前用户信息
-   * @returns 统计信息
-   */
-  @Get('stats/summary')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: '获取预约统计', description: '获取预约相关统计信息' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '查询成功',
-    type: AppointmentStatisticsDto,
-  })
-  async getStats(
-    @CurrentUser() user: any,
-  ): Promise<ApiResponseDto<AppointmentStatisticsDto>> {
-    this.logger.log(`管理员 ${user.id} 查询预约统计`);
-    
-    const stats = await this.bookingsService.getBookingStats();
-    return ApiResponseDto.success(stats, '获取预约统计信息成功');
   }
 }

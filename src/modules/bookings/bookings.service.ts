@@ -38,79 +38,113 @@ export class BookingsService {
    */
   async createBooking(createAppointmentDto: CreateAppointmentDto): Promise<AppointmentResponseDto> {
     try {
-      // 检查时间段是否存在
-      const timeSlot = await this.prisma.timeSlot.findUnique({
-        where: { id: createAppointmentDto.timeSlotId }
-      });
-
-      if (!timeSlot) {
-        throw new ResourceNotFoundException('时间段');
-      }
-
-      // 检查时间段是否可用
-      if (!timeSlot.isActive) {
-        throw new TimeSlotConflictException('时间段不可用');
-      }
-
-      // 检查时间段容量（假设默认容量为10）
-      const maxCapacity = 10;
-      const existingAppointments = await this.prisma.appointment.count({
-        where: {
-          timeSlotId: createAppointmentDto.timeSlotId,
-          appointmentDate: new Date(createAppointmentDto.appointmentDate),
-          status: {
-            in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING]
-          }
-        }
-      });
-
-      if (existingAppointments >= maxCapacity) {
-        throw new TimeSlotConflictException('时间段已满');
-      }
-
-      // 检查用户是否有冲突的预约（如果提供了用户ID）
-      if (createAppointmentDto.userId) {
-        const conflictingAppointment = await this.prisma.appointment.findFirst({
+      const appointmentDate = new Date(createAppointmentDto.appointmentDate);
+      let serviceId: string | undefined = createAppointmentDto.serviceId;
+      if (!serviceId && createAppointmentDto.serviceName) {
+        const service = await this.prisma.service.findFirst({
           where: {
-            userId: createAppointmentDto.userId,
-            timeSlotId: createAppointmentDto.timeSlotId,
-            appointmentDate: new Date(createAppointmentDto.appointmentDate),
-            status: {
-              in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING]
-            }
+            name: createAppointmentDto.serviceName,
+            isActive: true
           }
         });
-
-        if (conflictingAppointment) {
-          throw new TimeSlotConflictException('用户在该时间段已有预约');
+        if (service) {
+          serviceId = service.id;
         }
       }
 
-      // 生成预约编号
       const appointmentNumber = await this.generateAppointmentNumber();
+      const appointment = await this.prisma.$transaction(async (tx) => {
+        const timeSlot = await tx.timeSlot.findUnique({
+          where: { id: createAppointmentDto.timeSlotId },
+        });
 
-      // 创建预约 - 使用正确的字段映射
-      const appointment = await this.prisma.appointment.create({
-        data: {
-          appointmentNumber,
-          userId: createAppointmentDto.userId,
-          appointmentDate: new Date(createAppointmentDto.appointmentDate),
-          timeSlotId: createAppointmentDto.timeSlotId,
-          customerName: createAppointmentDto.customerName,
-          customerPhone: createAppointmentDto.customerPhone,
-          customerEmail: createAppointmentDto.customerEmail,
-          customerWechat: createAppointmentDto.customerWechat,
-          notes: createAppointmentDto.notes,
-          status: AppointmentStatus.PENDING
-        },
-        include: {
-          timeSlot: true,
-          user: true
+        if (!timeSlot) {
+          throw new ResourceNotFoundException('时间段');
         }
+
+        if (!timeSlot.isActive) {
+          throw new TimeSlotConflictException('时间段不可用');
+        }
+
+        const maxCapacity = 10;
+        const existingAppointments = await tx.appointment.count({
+          where: {
+            timeSlotId: createAppointmentDto.timeSlotId,
+            appointmentDate,
+            status: {
+              in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
+            },
+          },
+        });
+
+        if (existingAppointments >= maxCapacity) {
+          throw new TimeSlotConflictException('时间段已满');
+        }
+
+        if (createAppointmentDto.userId) {
+          const conflictingAppointment = await tx.appointment.findFirst({
+            where: {
+              userId: createAppointmentDto.userId,
+              timeSlotId: createAppointmentDto.timeSlotId,
+              appointmentDate,
+              status: {
+                in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
+              },
+            },
+          });
+
+          if (conflictingAppointment) {
+            throw new TimeSlotConflictException('用户在该时间段已有预约');
+          }
+        }
+
+        if (serviceId) {
+          const conflictingServiceAppointment = await tx.appointment.findFirst({
+            where: {
+              serviceId,
+              timeSlotId: createAppointmentDto.timeSlotId,
+              appointmentDate,
+              status: {
+                in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
+              },
+            },
+          });
+
+          if (conflictingServiceAppointment) {
+            throw new TimeSlotConflictException('该服务在该时间段已被预约');
+          }
+        }
+
+        return tx.appointment.create({
+          data: {
+            appointmentNumber,
+            userId: createAppointmentDto.userId,
+            appointmentDate,
+            timeSlotId: createAppointmentDto.timeSlotId,
+            serviceId,
+            customerName: createAppointmentDto.customerName,
+            customerPhone: createAppointmentDto.customerPhone,
+            customerEmail: createAppointmentDto.customerEmail,
+            customerWechat: createAppointmentDto.customerWechat,
+            notes: createAppointmentDto.notes,
+            status: AppointmentStatus.PENDING,
+          },
+          include: {
+            timeSlot: true,
+            user: true,
+            service: true,
+          },
+        });
       });
 
       return this.mapToResponseDto(appointment);
     } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new TimeSlotConflictException('预约冲突，请选择其他时间段');
+      }
       if (error instanceof ResourceNotFoundException || 
           error instanceof TimeSlotConflictException || 
           error instanceof BusinessRuleException) {
@@ -132,7 +166,8 @@ export class BookingsService {
         where: { id },
         include: {
           timeSlot: true,
-          user: true
+          user: true,
+          service: true
         }
       });
 
@@ -208,7 +243,8 @@ export class BookingsService {
         data: updateData,
         include: {
           timeSlot: true,
-          user: true
+          user: true,
+          service: true
         }
       });
 
@@ -236,7 +272,8 @@ export class BookingsService {
         where: { id },
         include: {
           timeSlot: true,
-          user: true
+          user: true,
+          service: true
         }
       });
 
@@ -268,7 +305,8 @@ export class BookingsService {
         },
         include: {
           timeSlot: true,
-          user: true
+          user: true,
+          service: true
         }
       });
 
@@ -335,7 +373,8 @@ export class BookingsService {
         where,
         include: {
           timeSlot: true,
-          user: true
+          user: true,
+          service: true
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -355,6 +394,7 @@ export class BookingsService {
       this.logger.log(`映射后的预约数量: ${items.length}`);
 
       // 直接返回对象而不是使用构造函数
+      
       const result = {
         items,
         total,
@@ -518,6 +558,11 @@ export class BookingsService {
       user: appointment.user ? {
         name: appointment.user.name,
         phoneNumber: appointment.user.phone
+      } : undefined,
+      service: appointment.service ? {
+        id: appointment.service.id,
+        name: appointment.service.name,
+        durationMinutes: appointment.service.durationMinutes
       } : undefined
     };
   }

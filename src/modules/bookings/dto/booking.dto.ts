@@ -33,6 +33,11 @@ export class CreateAppointmentDto {
   @IsUUID('4', { message: '用户ID格式无效' })
   userId?: string;
 
+  @ApiProperty({ description: '服务ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsOptional()
+  @IsUUID('4', { message: '服务ID格式无效' })
+  serviceId?: string;
+
   @ApiProperty({ description: '预约日期', example: '2024-01-01' })
   @IsNotEmpty({ message: '预约日期不能为空' })
   @IsDateString({}, { message: '预约日期格式无效' })
@@ -62,6 +67,11 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsString({ message: '备注必须是字符串' })
   notes?: string;
+
+  @ApiProperty({ description: '服务名称', example: '咨询服务' })
+  @IsOptional()
+  @IsString({ message: '服务名称必须是字符串' })
+  serviceName?: string;
 }
 
 /**
@@ -146,6 +156,13 @@ export class AppointmentResponseDto {
   user?: {
     name: string;
     phoneNumber: string;
+  };
+
+  @ApiProperty({ description: '服务信息' })
+  service?: {
+    id: string;
+    name: string;
+    durationMinutes: number;
   };
 
   @ApiProperty({ description: '确认发送状态' })
