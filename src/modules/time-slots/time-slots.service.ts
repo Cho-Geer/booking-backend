@@ -209,7 +209,7 @@ export class TimeSlotsService {
           }
         });
 
-        const maxCapacity = 10; // 假设每个时间段最大容量为 10
+        const maxCapacity = 1;
         const availableCount = maxCapacity - bookedCount;
         const isAvailable = availableCount > 0 && slot.isActive;
 

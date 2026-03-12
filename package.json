@@ -27,6 +27,7 @@
     "db:init": "npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed"
   },
   "dependencies": {
+    "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
@@ -47,8 +48,9 @@
     "class-validator": "^0.14.0",
     "cookie-parser": "^1.4.7",
     "date-fns": "^2.30.0",
+    "handlebars": "^4.7.8",
     "ioredis": "^5.7.0",
-    "nodemailer": "^6.9.0",
+    "nodemailer": "^6.10.1",
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
@@ -67,7 +69,7 @@
     "@types/jest": "^29.5.14",
     "@types/multer": "^2.0.0",
     "@types/node": "^20.19.17",
-    "@types/nodemailer": "^6.4.8",
+    "@types/nodemailer": "^6.4.23",
     "@types/passport-jwt": "^3.0.8",
     "@types/passport-local": "^1.0.35",
     "@types/supertest": "^2.0.16",

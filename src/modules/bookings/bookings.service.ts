@@ -24,12 +24,16 @@ import {
   DatabaseException
 } from '../../common/exceptions/business.exceptions';
 import { Prisma, AppointmentStatus } from '@prisma/client';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService
+  ) {}
 
   /**
    * 创建预约
@@ -66,7 +70,7 @@ export class BookingsService {
           throw new TimeSlotConflictException('时间段不可用');
         }
 
-        const maxCapacity = 10;
+        const maxCapacity = 1;
         const existingAppointments = await tx.appointment.count({
           where: {
             timeSlotId: createAppointmentDto.timeSlotId,
@@ -79,23 +83,6 @@ export class BookingsService {
 
         if (existingAppointments >= maxCapacity) {
           throw new TimeSlotConflictException('时间段已满');
-        }
-
-        if (createAppointmentDto.userId) {
-          const conflictingAppointment = await tx.appointment.findFirst({
-            where: {
-              userId: createAppointmentDto.userId,
-              timeSlotId: createAppointmentDto.timeSlotId,
-              appointmentDate,
-              status: {
-                in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
-              },
-            },
-          });
-
-          if (conflictingAppointment) {
-            throw new TimeSlotConflictException('用户在该时间段已有预约');
-          }
         }
 
         if (serviceId) {
@@ -136,6 +123,18 @@ export class BookingsService {
           },
         });
       });
+
+      // Send confirmation email asynchronously
+      // We do not await this to prevent blocking the response
+      if (createAppointmentDto.customerEmail) {
+        this.emailService.sendBookingConfirmation(createAppointmentDto.customerEmail, {
+          customerName: createAppointmentDto.customerName,
+          appointmentDate: appointmentDate.toLocaleDateString(),
+          timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
+          serviceName: appointment.service ? appointment.service.name : 'Standard Service',
+          appointmentNumber: appointmentNumber,
+        }).catch(err => this.logger.error('Error triggering email confirmation', err));
+      }
 
       return this.mapToResponseDto(appointment);
     } catch (error) {
@@ -309,6 +308,17 @@ export class BookingsService {
           service: true
         }
       });
+
+      // Send cancellation email asynchronously
+      if (appointment.customerEmail) {
+        this.emailService.sendBookingCancellation(appointment.customerEmail, {
+          customerName: appointment.customerName,
+          appointmentDate: appointment.appointmentDate.toLocaleDateString(),
+          timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
+          serviceName: appointment.service ? appointment.service.name : 'Standard Service',
+          appointmentNumber: appointment.appointmentNumber,
+        }).catch(err => this.logger.error('Error triggering email cancellation', err));
+      }
 
       return this.mapToResponseDto(appointment);
     } catch (error) {
