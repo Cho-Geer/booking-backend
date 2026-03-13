@@ -133,6 +133,7 @@ export class BookingsService {
           timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
           serviceName: appointment.service ? appointment.service.name : 'Standard Service',
           appointmentNumber: appointmentNumber,
+          notes: appointment.notes
         }).catch(err => this.logger.error('Error triggering email confirmation', err));
       }
 
@@ -213,6 +214,18 @@ export class BookingsService {
         updateData.status = updateAppointmentDto.status;
         this.logger.log(`设置状态: ${updateAppointmentDto.status}`);
       }
+      if (updateAppointmentDto.appointmentDate !== undefined) {
+        updateData.appointmentDate = new Date(updateAppointmentDto.appointmentDate);
+        this.logger.log(`设置预约日期: ${updateAppointmentDto.appointmentDate}`);
+      }
+      if (updateAppointmentDto.timeSlotId !== undefined) {
+        updateData.timeSlotId = updateAppointmentDto.timeSlotId;
+        this.logger.log(`设置时间段ID: ${updateAppointmentDto.timeSlotId}`);
+      }
+      if (updateAppointmentDto.serviceId !== undefined) {
+        updateData.serviceId = updateAppointmentDto.serviceId;
+        this.logger.log(`设置服务ID: ${updateAppointmentDto.serviceId}`);
+      }
       if (updateAppointmentDto.customerName !== undefined) {
         updateData.customerName = updateAppointmentDto.customerName;
         this.logger.log(`设置客户姓名: ${updateAppointmentDto.customerName}`);
@@ -248,6 +261,19 @@ export class BookingsService {
       });
 
       this.logger.log(`预约更新成功: ${appointment.id}`);
+
+      // Send update email asynchronously
+      if (appointment.customerEmail) {
+        this.emailService.sendBookingUpdate(appointment.customerEmail, {
+          customerName: appointment.customerName,
+          appointmentDate: appointment.appointmentDate.toLocaleDateString(),
+          timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
+          serviceName: appointment.service ? appointment.service.name : 'Standard Service',
+          appointmentNumber: appointment.appointmentNumber,
+          notes: appointment.notes
+        }).catch(err => this.logger.error('Error triggering email update', err));
+      }
+
       return this.mapToResponseDto(appointment);
     } catch (error) {
       this.logger.error(`更新预约失败: ${error.message}`, error.stack);
@@ -317,6 +343,7 @@ export class BookingsService {
           timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
           serviceName: appointment.service ? appointment.service.name : 'Standard Service',
           appointmentNumber: appointment.appointmentNumber,
+          notes: appointment.notes
         }).catch(err => this.logger.error('Error triggering email cancellation', err));
       }
 
@@ -339,13 +366,13 @@ export class BookingsService {
    */
   async findBookings(query: AppointmentQueryDto): Promise<AppointmentListResponseDto> {
     try {
-      const { page = 1, limit = 10, status, userId, timeSlotId, startDate, endDate } = query;
+      const { page = 1, limit = 10, status, userId, timeSlotId, startDate, endDate, keyword } = query;
       // 确保page和limit是数字类型
       const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
       const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
       const skip = (pageNum - 1) * limitNum;
 
-      this.logger.log(`查询预约列表: page=${pageNum}, limit=${limitNum}, status=${status}, userId=${userId}, timeSlotId=${timeSlotId}, startDate=${startDate}, endDate=${endDate}`);
+      this.logger.log(`查询预约列表: page=${pageNum}, limit=${limitNum}, status=${status}, userId=${userId}, timeSlotId=${timeSlotId}, startDate=${startDate}, endDate=${endDate}, keyword=${keyword}`);
 
       // 构建查询条件
       const where: Prisma.AppointmentWhereInput = {};
@@ -370,6 +397,16 @@ export class BookingsService {
         if (endDate) {
           where.appointmentDate.lte = new Date(endDate);
         }
+      }
+
+      // 处理关键词搜索
+      if (keyword) {
+        where.OR = [
+          { customerName: { contains: keyword, mode: 'insensitive' } },
+          { customerPhone: { contains: keyword, mode: 'insensitive' } },
+          { notes: { contains: keyword, mode: 'insensitive' } },
+          { appointmentNumber: { contains: keyword, mode: 'insensitive' } }
+        ];
       }
 
       this.logger.log(`构建的查询条件: ${JSON.stringify(where)}`);

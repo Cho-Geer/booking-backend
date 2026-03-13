@@ -26,6 +26,7 @@ export class EmailService {
           time: bookingDetails.timeSlot,
           service: bookingDetails.serviceName,
           bookingId: bookingDetails.appointmentNumber,
+          notes: bookingDetails.notes || 'None',
         },
       });
       this.logger.log(`Booking confirmation email sent to ${to}`);
@@ -54,11 +55,39 @@ export class EmailService {
           time: bookingDetails.timeSlot,
           service: bookingDetails.serviceName,
           bookingId: bookingDetails.appointmentNumber,
+          notes: bookingDetails.notes || 'None',
         },
       });
       this.logger.log(`Booking cancellation email sent to ${to}`);
     } catch (error) {
       this.logger.error(`Failed to send booking cancellation email to ${to}`, error.stack);
+    }
+  }
+
+  /**
+   * Send booking update email
+   * @param to Recipient email
+   * @param bookingDetails Booking details
+   */
+  async sendBookingUpdate(to: string, bookingDetails: any) {
+    try {
+      this.logger.log(`Sending booking update email to ${to}`);
+      await this.mailerService.sendMail({
+        to,
+        subject: 'Booking Updated - Booking System',
+        template: './updated',
+        context: {
+          name: bookingDetails.customerName,
+          date: bookingDetails.appointmentDate,
+          time: bookingDetails.timeSlot,
+          service: bookingDetails.serviceName,
+          bookingId: bookingDetails.appointmentNumber,
+          notes: bookingDetails.notes || 'None',
+        },
+      });
+      this.logger.log(`Booking update email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(`Failed to send booking update email to ${to}`, error.stack);
     }
   }
 }

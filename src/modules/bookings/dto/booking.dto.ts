@@ -83,6 +83,21 @@ export class UpdateAppointmentDto {
   @IsEnum(AppointmentStatusEnum, { message: '预约状态无效' })
   status?: AppointmentStatusEnum;
 
+  @ApiProperty({ description: '预约日期', required: false, example: '2024-01-01' })
+  @IsOptional()
+  @IsDateString({}, { message: '预约日期格式无效' })
+  appointmentDate?: string;
+
+  @ApiProperty({ description: '时间段ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsOptional()
+  @IsUUID('4', { message: '时间段ID格式无效' })
+  timeSlotId?: string;
+
+  @ApiProperty({ description: '服务ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsOptional()
+  @IsUUID('4', { message: '服务ID格式无效' })
+  serviceId?: string;
+
   @ApiProperty({ description: '客户姓名', required: false, example: '张三' })
   @IsOptional()
   @IsString({ message: '客户姓名必须是字符串' })
@@ -233,6 +248,11 @@ export class AppointmentQueryDto {
   @ApiProperty({ description: '每页数量', required: false, default: 10, minimum: 1, maximum: 100 })
   @IsOptional()
   limit?: number = 10;
+
+  @ApiProperty({ description: '搜索关键词', required: false, example: '张三' })
+  @IsOptional()
+  @IsString({ message: '搜索关键词必须是字符串' })
+  keyword?: string;
 }
 
 /**
