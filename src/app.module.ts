@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
+import { ScheduleModule } from '@nestjs/schedule';
 import { redisStore } from 'cache-manager-redis-store';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -11,6 +12,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { DatabaseModule } from './common/database/database.module';
 import { FileUploadModule } from './common/file-upload/file-upload.module';
 import { WebsocketModule } from './common/websocket/websocket.module';
+import { RetentionModule } from './modules/retention/retention.module';
 
 /**
  * 主应用模块
@@ -23,6 +25,7 @@ import { WebsocketModule } from './common/websocket/websocket.module';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+    ScheduleModule.forRoot(),
     
     // 数据库模块（包含连接池优化）
     DatabaseModule,
@@ -57,6 +60,7 @@ import { WebsocketModule } from './common/websocket/websocket.module';
     BookingsModule,
     ServicesModule,
     EmailModule,
+    RetentionModule,
   ],
 })
 export class AppModule {}
