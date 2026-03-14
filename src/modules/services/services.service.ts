@@ -1,5 +1,5 @@
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Service } from '@prisma/client';
@@ -7,9 +7,12 @@ import { CreateServiceDto, UpdateServiceDto, ToggleServiceStatusDto } from './dt
 
 @Injectable()
 export class ServicesService {
+  private readonly logger = new Logger(ServicesService.name);
+  
   constructor(private prisma: PrismaService) {}
 
   async findAll(): Promise<Service[]> {
+    this.logger.log('Fetching all active services');
     return this.prisma.service.findMany({
       where: {
         isActive: true,
@@ -24,6 +27,7 @@ export class ServicesService {
   }
 
   async findAllForAdmin(): Promise<Service[]> {
+    this.logger.log('Fetching all services for admin');
     return this.prisma.service.findMany({
       orderBy: {
         displayOrder: 'asc',
@@ -35,6 +39,8 @@ export class ServicesService {
   }
 
   async createService(createServiceDto: CreateServiceDto): Promise<Service> {
+    this.logger.log(`Creating service: ${createServiceDto.name}`);
+    
     const data: Prisma.ServiceCreateInput = {
       name: createServiceDto.name,
       description: createServiceDto.description,
@@ -52,70 +58,89 @@ export class ServicesService {
         : undefined,
     };
 
-    return this.prisma.service.create({
+    const service = await this.prisma.service.create({
       data,
       include: {
         category: true,
       },
     });
+    
+    this.logger.log(`Service created successfully: ${service.id}`);
+    return service;
   }
 
   async updateService(id: string, updateServiceDto: UpdateServiceDto): Promise<Service> {
-    const existingService = await this.prisma.service.findUnique({
-      where: { id },
-    });
+    this.logger.log(`Updating service: ${id}`);
+    
+    return this.prisma.$transaction(async (tx) => {
+      const existingService = await tx.service.findUnique({
+        where: { id },
+      });
 
-    if (!existingService) {
-      throw new NotFoundException('服务不存在');
-    }
+      if (!existingService) {
+        this.logger.warn(`Service not found for update: ${id}`);
+        throw new NotFoundException('服务不存在');
+      }
 
-    const data: Prisma.ServiceUpdateInput = {
-      name: updateServiceDto.name,
-      description: updateServiceDto.description,
-      durationMinutes: updateServiceDto.durationMinutes,
-      price: updateServiceDto.price,
-      imageUrl: updateServiceDto.imageUrl,
-      isActive: updateServiceDto.isActive,
-      displayOrder: updateServiceDto.displayOrder,
-      category: updateServiceDto.categoryId
-        ? {
-            connect: {
-              id: updateServiceDto.categoryId,
-            },
-          }
-        : updateServiceDto.categoryId === null
+      const data: Prisma.ServiceUpdateInput = {
+        name: updateServiceDto.name,
+        description: updateServiceDto.description,
+        durationMinutes: updateServiceDto.durationMinutes,
+        price: updateServiceDto.price,
+        imageUrl: updateServiceDto.imageUrl,
+        isActive: updateServiceDto.isActive,
+        displayOrder: updateServiceDto.displayOrder,
+        category: updateServiceDto.categoryId
           ? {
-              disconnect: true,
+              connect: {
+                id: updateServiceDto.categoryId,
+              },
             }
-          : undefined,
-    };
+          : updateServiceDto.categoryId === null
+            ? {
+                disconnect: true,
+              }
+            : undefined,
+      };
 
-    return this.prisma.service.update({
-      where: { id },
-      data,
-      include: {
-        category: true,
-      },
+      const service = await tx.service.update({
+        where: { id },
+        data,
+        include: {
+          category: true,
+        },
+      });
+      
+      this.logger.log(`Service updated successfully: ${id}`);
+      return service;
     });
   }
 
   async toggleServiceStatus(id: string, toggleServiceStatusDto: ToggleServiceStatusDto): Promise<Service> {
-    const existingService = await this.prisma.service.findUnique({
-      where: { id },
-    });
+    this.logger.log(`Toggling service status: ${id} to ${toggleServiceStatusDto.isActive}`);
+    
+    return this.prisma.$transaction(async (tx) => {
+      const existingService = await tx.service.findUnique({
+        where: { id },
+      });
 
-    if (!existingService) {
-      throw new NotFoundException('服务不存在');
-    }
+      if (!existingService) {
+        this.logger.warn(`Service not found for status toggle: ${id}`);
+        throw new NotFoundException('服务不存在');
+      }
 
-    return this.prisma.service.update({
-      where: { id },
-      data: {
-        isActive: toggleServiceStatusDto.isActive,
-      },
-      include: {
-        category: true,
-      },
+      const service = await tx.service.update({
+        where: { id },
+        data: {
+          isActive: toggleServiceStatusDto.isActive,
+        },
+        include: {
+          category: true,
+        },
+      });
+      
+      this.logger.log(`Service status toggled successfully: ${id}`);
+      return service;
     });
   }
 }
