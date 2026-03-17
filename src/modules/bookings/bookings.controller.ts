@@ -299,7 +299,7 @@ export class BookingsController {
         throw new ResourceNotFoundException('预约');
       }
       
-      await this.bookingsService.cancelBooking(id, user.id);
+      await this.bookingsService.cancelBooking(id, user.id, user.userType);
       return ApiResponseDto.success(null, '预约取消成功');
     } catch (error) {
       if (error instanceof ResourceNotFoundException) {

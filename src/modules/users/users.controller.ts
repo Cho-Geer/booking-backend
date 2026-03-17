@@ -21,12 +21,13 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
+import { CreateUserDto, QueryUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators/index';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
+import { UserType } from '@prisma/client';
 
 @ApiTags('用户管理')
 @ApiBearerAuth()
@@ -62,7 +63,6 @@ export class UsersController {
   /**
    * 获取用户列表
    * @param query 查询参数
-   * @param pagination 分页参数
    * @returns 用户列表
    */
   @Get()
@@ -70,15 +70,28 @@ export class UsersController {
   @Permissions('users.read')
   @ApiOperation({ summary: '获取用户列表' })
   @ApiQuery({ name: 'name', required: false, description: '用户姓名' })
-  @ApiQuery({ name: 'phoneNumber', required: false, description: '手机号' })
+  @ApiQuery({ name: 'phone', required: false, description: '手机号' })
   @ApiQuery({ name: 'role', required: false, enum: ['USER', 'ADMIN', 'SUPER_ADMIN'], description: '用户角色' })
   @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], description: '用户状态' })
   @ApiQuery({ name: 'startDate', required: false, description: '开始日期' })
   @ApiQuery({ name: 'endDate', required: false, description: '结束日期' })
-  async findUsers(
-    @Query() query: any,
-    @Query(new ValidationPipe()) pagination: PaginationQueryDto,
-  ): Promise<ApiResponseDto<any>> {
+  @ApiQuery({ name: 'page', required: false, description: '页码' })
+  @ApiQuery({ name: 'limit', required: false, description: '每页数量' })
+  async findUsers(@Query(new ValidationPipe()) myQuery: QueryUserDto): Promise<ApiResponseDto<any>> {
+    // 从 query 中提取分页参数
+    const pagination = new PaginationQueryDto({
+      page: myQuery.page || 1,
+      limit: myQuery.limit || 10
+    });
+    // 从 query 中提取其他查询参数
+    const query = {
+      name: myQuery?.name,
+      phone: myQuery?.phone,
+      userType: myQuery?.userType,
+      status: myQuery?.status,
+      startDate: myQuery?.startDate,
+      endDate: myQuery?.endDate
+    };
     const result = await this.usersService.findUsers(query, pagination);
     return ApiResponseDto.success(result, '获取用户列表成功');
   }

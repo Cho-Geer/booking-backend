@@ -23,7 +23,7 @@ import {
   AuthorizationException,
   DatabaseException
 } from '../../common/exceptions/business.exceptions';
-import { Prisma, AppointmentStatus } from '@prisma/client';
+import { Prisma, AppointmentStatus, UserType } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 
 @Injectable()
@@ -290,7 +290,7 @@ export class BookingsService {
    * @param userId 用户ID（用于权限检查）
    * @returns 取消后的预约信息
    */
-  async cancelBooking(id: string, userId?: string): Promise<AppointmentResponseDto> {
+  async cancelBooking(id: string, userId?: string, userType?: UserType): Promise<AppointmentResponseDto> {
     try {
       // 检查预约是否存在
       const existingAppointment = await this.prisma.appointment.findUnique({
@@ -307,7 +307,8 @@ export class BookingsService {
       }
 
       // 权限检查：只有预约者本人或管理员可以取消
-      if (userId && existingAppointment.userId && existingAppointment.userId !== userId) {
+      if (userId && existingAppointment.userId && existingAppointment.userId !== userId 
+        && userType !== UserType.ADMIN) {
         throw new AuthorizationException('无权取消此预约');
       }
 

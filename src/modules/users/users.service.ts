@@ -270,10 +270,7 @@ export class UsersService {
       const users = await this.prisma.user.findMany({
         where,
         skip: (pagination.page - 1) * pagination.limit,
-        take: pagination.limit,
-        orderBy: {
-          [query.sortBy || 'createdAt']: query.order || 'desc',
-        },
+        take: pagination.limit
       });
 
       return {

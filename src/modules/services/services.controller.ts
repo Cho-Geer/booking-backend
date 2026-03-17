@@ -1,14 +1,23 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards, ValidationPipe } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards, ValidationPipe, Query, Logger, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { ServicesService } from './services.service';
 import { CurrentUser } from '../../common/decorators';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
-import { CreateServiceDto, ToggleServiceStatusDto, UpdateServiceDto, ParamIdDto } from './dto/service.dto';
+import { CreateServiceDto, ToggleServiceStatusDto, UpdateServiceDto, ParamIdDto, ServiceQueryDto, ServiceListResponseDto } from './dto/service.dto';
+import { User } from '@prisma/client';
+import { UserType } from '../users/dto/user.dto';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 
 @ApiTags('Services')
 @Controller('services')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(TransformInterceptor)
 export class ServicesController {
+  private readonly logger = new Logger(ServicesController.name);
+
   constructor(private readonly servicesService: ServicesService) {}
 
   @Get()
@@ -21,16 +30,20 @@ export class ServicesController {
     };
   }
 
-  @Get('admin/all')
+  @Get('all')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '管理员获取全部服务列表' })
   @ApiResponse({ status: 200, description: '成功获取服务列表' })
-  async findAllForAdmin() {
-    const services = await this.servicesService.findAllForAdmin();
-    return {
-      data: services,
-    };
+  @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: '每页数量', example: 10 })
+  async findAllForAdmin(@Query(ValidationPipe) query: ServiceQueryDto): Promise<ServiceListResponseDto> {
+    try {
+      return await this.servicesService.findAllForAdmin(query);
+    } catch (error) {
+      this.logger.error(`查询服務列表失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   @Post('admin')

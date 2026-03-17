@@ -184,7 +184,6 @@ export class QueryUserDto {
   @Type(() => Date)
   @IsOptional()
   endDate?: Date;
-
   @ApiProperty({ description: '页码', required: false, default: 1, minimum: 1 })
   @IsOptional()
   page?: number = 1;
