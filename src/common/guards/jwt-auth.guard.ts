@@ -32,69 +32,90 @@ export class JwtAuthGuard implements CanActivate {
     if (skipAuth) {
       return true;
     }
-
+  
     const request = context.switchToHttp().getRequest<Request>();
-    
-    try {
-      // 从请求头中提取token
-      const token = this.extractToken(request);
       
+    try {
+      // 从请求头中提取 token
+      const token = this.extractToken(request);
+        
       if (!token) {
+        // 如果没有访问令牌，但有刷新令牌，允许请求通过
+        // 让前端的 axios 拦截器自动处理刷新逻辑
+        // const hasRefreshToken = this.hasRefreshToken(request);
+        // if (hasRefreshToken) {
+        //   this.logger.log('检测到刷新令牌但无访问令牌，允许请求通过（将由拦截器处理刷新）');
+        //   return true;
+        // }
+          
         throw new AuthenticationException('未提供访问令牌');
       }
-
-      // 验证token
+  
+      // 验证 token
       const payload = await this.verifyToken(token);
-      
+        
       // 获取用户信息
       const user = await this.getUserFromPayload(payload);
-      
+        
       if (!user) {
         throw new AuthenticationException('用户不存在');
       }
-
+  
       // 检查用户状态
       if (user.status !== 'ACTIVE') {
         throw new AuthenticationException('用户账户已被禁用');
       }
-
+  
       // 将用户信息添加到请求对象
       request.user = user;
-      
+        
       return true;
     } catch (error) {
       if (error instanceof AuthenticationException) {
+        // // 如果是访问令牌过期且有刷新令牌，允许请求通过
+        // if (error.message.includes('已过期') && this.hasRefreshToken(request)) {
+        //   this.logger.log('访问令牌已过期但存在刷新令牌，允许请求通过（将由拦截器处理刷新）');
+        //   return true;
+        // }
         throw error;
       }
-      
-      this.logger.error(`JWT认证失败: ${error.message}`, error.stack);
+        
+      this.logger.error(`JWT 认证失败：${error.message}`, error.stack);
       throw new AuthenticationException('令牌验证失败');
     }
   }
 
   /**
-   * 从请求头中提取JWT令牌
+   * 从请求头中提取 JWT 令牌
    */
   private extractToken(request: Request): string | null {
     const cookieToken = (request as Request & { cookies?: Record<string, string> }).cookies?.access_token;
     if (cookieToken) {
       return cookieToken;
     }
-
+  
     const authHeader = request.headers.authorization;
-    
+      
     if (!authHeader) {
       return null;
     }
-
+  
     const [type, token] = authHeader.split(' ');
-    
+      
     if (type !== 'Bearer' || !token) {
       return null;
     }
-
+  
     return token;
   }
+  
+  /**
+   * 检查请求中是否存在刷新令牌
+   */
+  // private hasRefreshToken(request: Request): boolean {
+  //   const refreshToken = (request as Request & { cookies?: Record<string, string> }).cookies?.refresh_token;
+  //   return !!refreshToken;
+  // }
 
   /**
    * 验证JWT令牌
