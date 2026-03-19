@@ -58,6 +58,20 @@ export class BookingsService {
         }
       }
 
+      // 验证 serviceId 指向的服务是否处于启用状态
+      if (serviceId) {
+        const targetService = await this.prisma.service.findUnique({
+          where: { id: serviceId },
+        });
+        if (!targetService) {
+          throw new ResourceNotFoundException('服务');
+        }
+        if (!targetService.isActive) {
+          this.logger.warn(`服务已被禁用，无法创建预约: ${targetService.id}, ${targetService.name}`);
+          throw new BusinessRuleException(`服务 "${targetService.name}" 已被禁用，无法创建预约`);
+        }
+      }
+
       const appointmentNumber = await this.generateAppointmentNumber();
       const appointment = await this.prisma.$transaction(async (tx) => {
         const timeSlot = await tx.timeSlot.findUnique({
@@ -212,12 +226,25 @@ export class BookingsService {
         throw new ResourceNotFoundException('预约');
       }
   
-      // サービス状態のチェック（ステータス更新時のみ）
-      if (updateAppointmentDto.status !== undefined && existingAppointment.serviceId) {
-        // 関連サービスの状態を確認
-        if (!existingAppointment.service.isActive) {
-          this.logger.warn(`服务已被禁用：${existingAppointment.service.id}, ${existingAppointment.service.name}`);
-          throw new BusinessRuleException(`由于相关服务已被禁用，${existingAppointment.appointmentNumber} 无法更新`);
+      // 如果更新了 serviceId，则验证新服务是否处于启用状态
+      if (updateAppointmentDto.serviceId !== undefined) {
+        const newService = await this.prisma.service.findUnique({
+          where: { id: updateAppointmentDto.serviceId },
+        });
+        if (!newService) {
+          throw new ResourceNotFoundException('服务');
+        }
+        if (!newService.isActive) {
+          this.logger.warn(`更新预约失败：目标服务已被禁用: ${newService.id}, ${newService.name}`);
+          throw new BusinessRuleException(`服务 "${newService.name}" 已被禁用，无法更新预约`);
+        }
+      }
+
+      // 如果不更改 serviceId，验证现有预约的服务是否仍处于启用状态
+      if (updateAppointmentDto.serviceId === undefined && existingAppointment.serviceId) {
+        if (existingAppointment.service && !existingAppointment.service.isActive) {
+          this.logger.warn(`预约关联服务已被禁用，无法更新预约: ${existingAppointment.service.id}, ${existingAppointment.service.name}`);
+          throw new BusinessRuleException(`服务 "${existingAppointment.service.name}" 已被禁用，无法更新预约`);
         }
       }
 
