@@ -138,6 +138,34 @@ export class BookingsController {
   }
 
   /**
+   * 获取指定日期的所有预约（无分页）
+   * @param date 日期
+   * @param user 当前用户信息
+   * @returns 该日期的所有预约
+   */
+  @Get('by-date')
+  @ApiOperation({ summary: '获取指定日期的所有预约', description: '获取指定日期的所有预约（无分页限制），用于时段状态映射' })
+  @ApiResponse({ status: 200, description: '获取成功', type: AppointmentListResponseDto })
+  @ApiResponse({ status: 400, description: '参数错误' })
+  @ApiQuery({ name: 'date', required: true, description: '日期 (YYYY-MM-DD)', example: '2024-01-15' })
+  async findAllBookingsByDate(
+    @Query('date') date: string,
+    @CurrentUser() user: any,
+  ): Promise<AppointmentListResponseDto> {
+    this.logger.log(`用户 ${user.id} 查询日期 ${date} 的所有预约`);
+
+    // 验证日期格式
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new ResourceNotFoundException('日期格式无效，请使用 YYYY-MM-DD 格式');
+    }
+
+    // 非管理员用户只能查看自己的预约
+    const userId = user.userType !== UserType.ADMIN ? user.id : undefined;
+    
+    return await this.bookingsService.findAllBookingsByDate(date, userId);
+  }
+
+  /**
    * 获取预约统计信息
    * @param user 当前用户信息
    * @returns 统计信息
@@ -196,12 +224,13 @@ export class BookingsController {
 
   /**
    * 更新预约
-   * @param id 预约ID
+   * @param id 预约 ID
    * @param updateAppointmentDto 更新数据
    * @param user 当前用户信息
    * @returns 更新后的预约信息
    */
   @Patch(':id')
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '更新预约', description: '更新预约信息' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -210,40 +239,46 @@ export class BookingsController {
   })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: '预约不存在' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: '权限不足' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: '请求参数无效' })  // 添加400错误响应
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: '请求参数无效' })  // 添加 400 错误响应
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateAppointmentDto: UpdateAppointmentDto,  // 移除ValidationPipe
+    @Body() updateAppointmentDto: UpdateAppointmentDto,  // 移除 ValidationPipe
     @CurrentUser() user: any,
   ): Promise<AppointmentResponseDto> {
-    this.logger.log(`用户 ${user.id} 更新预约 ${id}: ${JSON.stringify(updateAppointmentDto)}`);
-    
-    // 检查权限
-    const existingBooking = await this.bookingsService.findBookingById(id);
-    // 检查预约是否存在
-    if (!existingBooking) {
-      throw new ResourceNotFoundException('预约');
+    try {
+      this.logger.log(`用户 ${user.id} 更新预约 ${id}: ${JSON.stringify(updateAppointmentDto)}`);
+      
+      // 检查权限
+      const existingBooking = await this.bookingsService.findBookingById(id);
+      // 检查预约是否存在
+      if (!existingBooking) {
+        throw new ResourceNotFoundException('预约');
+      }
+      
+      if (user.userType !== UserType.ADMIN && existingBooking.userId !== user.id) {
+        throw new ResourceNotFoundException('预约');
+      }
+      
+      // 记录更新前的数据
+      this.logger.log(`更新前的预约数据: ${JSON.stringify(existingBooking)}`);
+      
+      // 记录DTO验证信息
+      this.logger.log(`更新DTO验证结果: ${JSON.stringify(updateAppointmentDto)}`);
+      
+      return await this.bookingsService.updateBooking(id, updateAppointmentDto);
+    } catch (error) {
+      this.logger.error(`更新预约 ${id} 失败: ${error.message}`, error.stack);
+      throw error;
     }
-    
-    if (user.userType !== UserType.ADMIN && existingBooking.userId !== user.id) {
-      throw new ResourceNotFoundException('预约');
-    }
-    
-    // 记录更新前的数据
-    this.logger.log(`更新前的预约数据: ${JSON.stringify(existingBooking)}`);
-    
-    // 记录DTO验证信息
-    this.logger.log(`更新DTO验证结果: ${JSON.stringify(updateAppointmentDto)}`);
-    
-    return await this.bookingsService.updateBooking(id, updateAppointmentDto);
   }
 
   /**
    * 取消预约
-   * @param id 预约ID
+   * @param id 预约 ID
    * @param user 当前用户信息
    */
   @Delete(':id')
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '取消预约', description: '取消指定的预约' })
   @ApiResponse({ status: HttpStatus.NO_CONTENT, description: '取消成功' })
@@ -276,7 +311,8 @@ export class BookingsController {
    * @returns 取消结果
    */
   @Patch(':id/cancel')
-  @HttpCode(HttpStatus.OK)  // 明确指定返回200状态码
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)  // 明确指定返回 200 状态码
   @ApiOperation({ summary: '取消预约', description: '取消指定的预约' })
   @ApiResponse({ status: HttpStatus.OK, description: '取消成功' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: '预约不存在' })

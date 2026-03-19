@@ -83,6 +83,11 @@ export class UpdateUserDto {
   @IsOptional()
   phone?: string;
 
+  @ApiProperty({ description: '邮箱', required: false })
+  @IsEmail({}, { message: '邮箱格式不正确' })
+  @IsOptional()
+  email?: string;
+
   @ApiProperty({ description: '用户类型', enum: UserType, required: false })
   @IsEnum(UserType, { message: '无效的用户类型' })
   @IsOptional()
@@ -112,6 +117,9 @@ export class UserResponseDto {
 
   @ApiProperty({ description: '手机号（脱敏）' })
   phone: string;
+
+  @ApiProperty({ description: '邮箱（脱敏）' })
+  email?: string;
 
   @ApiProperty({ description: '用户类型', enum: UserType })
   userType: UserType;
@@ -162,6 +170,11 @@ export class QueryUserDto {
   @IsPhoneNumber('CN', { message: '手机号格式不正确' })
   @IsOptional()
   phone?: string;
+
+  @ApiProperty({ description: '邮箱', required: false })
+  @IsEmail({}, { message: '邮箱格式不正确' })
+  @IsOptional()
+  email?: string;
 
   @ApiProperty({ description: '用户类型', enum: UserType, required: false })
   @IsEnum(UserType, { message: '无效的用户类型' })

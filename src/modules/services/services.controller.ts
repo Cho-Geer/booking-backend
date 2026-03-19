@@ -24,10 +24,12 @@ export class ServicesController {
   @ApiOperation({ summary: '获取所有服务列表' })
   @ApiResponse({ status: 200, description: '成功获取服务列表' })
   async findAll() {
-    const services = await this.servicesService.findAll();
-    return {
-      data: services
-    };
+    try {
+      return await this.servicesService.findAll();
+    } catch (error) {
+      this.logger.error(`查询服務列表失败: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   @Get('all')
@@ -84,9 +86,9 @@ export class ServicesController {
     @Param() { id }: ParamIdDto,
     @Body(new ValidationPipe({ transform: true })) toggleServiceStatusDto: ToggleServiceStatusDto,
   ) {
-    const service = await this.servicesService.toggleServiceStatus(id, toggleServiceStatusDto);
+    const result = await this.servicesService.toggleServiceStatus(id, toggleServiceStatusDto);
     return {
-      data: service,
+      data: result,
     };
   }
 }

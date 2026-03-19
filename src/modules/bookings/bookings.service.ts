@@ -25,6 +25,7 @@ import {
 } from '../../common/exceptions/business.exceptions';
 import { Prisma, AppointmentStatus, UserType } from '@prisma/client';
 import { EmailService } from '../email/email.service';
+import { MaskingUtil } from '../../common/utils/masking.util';
 
 @Injectable()
 export class BookingsService {
@@ -194,15 +195,27 @@ export class BookingsService {
   async updateBooking(id: string, updateAppointmentDto: UpdateAppointmentDto): Promise<AppointmentResponseDto> {
     try {
       this.logger.log(`开始更新预约 ${id}: ${JSON.stringify(updateAppointmentDto)}`);
-      
+        
       // 检查预约是否存在
       const existingAppointment = await this.prisma.appointment.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          service: true,
+        },
       });
-
+  
       if (!existingAppointment) {
-        this.logger.warn(`预约不存在: ${id}`);
+        this.logger.warn(`预约不存在：${id}`);
         throw new ResourceNotFoundException('预约');
+      }
+  
+      // サービス状態のチェック（ステータス更新時のみ）
+      if (updateAppointmentDto.status !== undefined && existingAppointment.serviceId) {
+        // 関連サービスの状態を確認
+        if (!existingAppointment.service.isActive) {
+          this.logger.warn(`服务已被禁用：${existingAppointment.service.id}, ${existingAppointment.service.name}`);
+          throw new BusinessRuleException(`由于相关服务已被禁用，${existingAppointment.appointmentNumber} 无法更新`);
+        }
       }
 
       this.logger.log(`更新预约数据: ${JSON.stringify(updateAppointmentDto)}`);
@@ -278,6 +291,9 @@ export class BookingsService {
     } catch (error) {
       this.logger.error(`更新预约失败: ${error.message}`, error.stack);
       if (error instanceof ResourceNotFoundException) {
+        throw error;
+      }
+      if (error instanceof BusinessRuleException) {
         throw error;
       }
       throw new DatabaseException('更新预约失败');
@@ -461,7 +477,7 @@ export class BookingsService {
 
   /**
    * 获取用户预约列表
-   * @param userId 用户ID
+   * @param userId 用户 ID
    * @param query 查询条件
    * @returns 用户预约列表
    */
@@ -471,6 +487,65 @@ export class BookingsService {
     } catch (error) {
       this.logger.error('查询用户预约列表失败', error);
       throw new DatabaseException('查询用户预约列表失败');
+    }
+  }
+  
+  /**
+   * 获取指定日期的所有预约（无分页）
+   * @param date 日期
+   * @param userId 用户 ID（用于过滤）
+   * @returns 该日期的所有预约
+   */
+  async findAllBookingsByDate(date: string, userId?: string): Promise<AppointmentListResponseDto> {
+    try {
+      this.logger.log(`查询日期 ${date} 的所有预约，userId: ${userId || 'all'}`);
+  
+      // 构建查询条件
+      const where: Prisma.AppointmentWhereInput = {
+        appointmentDate: new Date(date)
+      };
+  
+      if (userId) {
+        where.userId = userId;
+      }
+  
+      this.logger.log(`构建的查询条件：${JSON.stringify(where)}`);
+  
+      // 查询数据（无分页限制）
+      const appointments = await this.prisma.appointment.findMany({
+        where,
+        include: {
+          timeSlot: true,
+          user: true,
+          service: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+  
+      this.logger.log(`查询到的预约数量：${appointments.length}`);
+  
+      const items = appointments.map(appointment => {
+        try {
+          return this.mapToResponseDto(appointment);
+        } catch (error) {
+          this.logger.error(`映射预约数据失败：${error.message}`, error);
+          throw error;
+        }
+      });
+  
+      this.logger.log(`映射后的预约数量：${items.length}`);
+  
+      // 返回无分页的结果
+      return {
+        items,
+        total: items.length,
+        page: 1,
+        limit: items.length,
+        totalPages: 1
+      };
+    } catch (error) {
+      this.logger.error('查询指定日期预约失败', error);
+      throw new DatabaseException('查询指定日期预约失败');
     }
   }
 
@@ -587,8 +662,8 @@ export class BookingsService {
       timeSlotId: appointment.timeSlotId,
       appointmentDate: appointment.appointmentDate,
       customerName: appointment.customerName,
-      customerPhone: appointment.customerPhone,
-      customerEmail: appointment.customerEmail,
+      customerPhone: MaskingUtil.maskPhoneNumber(appointment.customerPhone), // 電話番号を匿名化
+      customerEmail: MaskingUtil.maskEmail(appointment.customerEmail), // メールを匿名化
       customerWechat: appointment.customerWechat,
       status: status,
       notes: appointment.notes,
@@ -605,7 +680,7 @@ export class BookingsService {
       } : undefined,
       user: appointment.user ? {
         name: appointment.user.name,
-        phoneNumber: appointment.user.phone
+        phoneNumber: MaskingUtil.maskPhoneNumber(appointment.user.phone) // ユーザーの電話番号も匿名化
       } : undefined,
       service: appointment.service ? {
         id: appointment.service.id,

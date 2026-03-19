@@ -1,16 +1,20 @@
 
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Service } from '@prisma/client';
 import { CreateServiceDto, UpdateServiceDto, ToggleServiceStatusDto, ServiceListResponseDto, ServiceQueryDto, ServiceResponseDto } from './dto/service.dto';
 import { DatabaseException } from '../../common/exceptions/business.exceptions';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class ServicesService {
   private readonly logger = new Logger(ServicesService.name);
   
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   async findAll(): Promise<Service[]> {
     this.logger.log('Fetching all active services');
@@ -181,10 +185,20 @@ export class ServicesService {
     });
   }
 
-  async toggleServiceStatus(id: string, toggleServiceStatusDto: ToggleServiceStatusDto): Promise<Service> {
+  async toggleServiceStatus(id: string, toggleServiceStatusDto: ToggleServiceStatusDto): Promise<ServiceResponseDto> {
     this.logger.log(`Toggling service status: ${id} to ${toggleServiceStatusDto.isActive}`);
     
-    return this.prisma.$transaction(async (tx) => {
+    let bookingsToNotify: Array<{
+      customerEmail: string;
+      customerName: string;
+      appointmentDate: Date;
+      timeSlot?: { slotTime: any };
+      serviceName?: string;
+      appointmentNumber: string;
+      notes?: string;
+    }> = [];
+
+    const service = await this.prisma.$transaction(async (tx) => {
       const existingService = await tx.service.findUnique({
         where: { id },
       });
@@ -192,6 +206,50 @@ export class ServicesService {
       if (!existingService) {
         this.logger.warn(`Service not found for status toggle: ${id}`);
         throw new NotFoundException('服务不存在');
+      }
+
+      // サービスを無効化する場合、PENDING または CONFIRMED の予約をキャンセル
+      if (!toggleServiceStatusDto.isActive && existingService.isActive) {
+        // 該当サービスのアクティブな予約を取得
+        const activeBookings = await tx.appointment.findMany({
+          where: {
+            serviceId: id,
+            status: {
+              in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+            },
+          },
+          include: {
+            timeSlot: true,
+            service: true,
+          },
+        });
+
+        this.logger.log(`無効化されるサービスに関連するアクティブな予約数：${activeBookings.length}`);
+
+        // 各予約をキャンセル（トランザクション内）
+        for (const booking of activeBookings) {
+          await tx.appointment.update({
+            where: { id: booking.id },
+            data: {
+              status: AppointmentStatus.CANCELLED,
+              cancelledAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+
+          // メール送信情報を保存（トランザクション外で送信）
+          if (booking.customerEmail) {
+            bookingsToNotify.push({
+              customerEmail: booking.customerEmail,
+              customerName: booking.customerName,
+              appointmentDate: booking.appointmentDate,
+              timeSlot: booking.timeSlot,
+              serviceName: booking.service?.name,
+              appointmentNumber: booking.appointmentNumber,
+              notes: booking.notes,
+            });
+          }
+        }
       }
 
       const service = await tx.service.update({
@@ -207,6 +265,25 @@ export class ServicesService {
       this.logger.log(`Service status toggled successfully: ${id}`);
       return service;
     });
+
+    // トランザクションの外でメール送信（非同期）
+    for (const booking of bookingsToNotify) {
+      this.emailService.sendBookingCancellation(
+        booking.customerEmail,
+        {
+          customerName: booking.customerName,
+          appointmentDate: booking.appointmentDate.toLocaleDateString('zh-CN'),
+          timeSlot: booking.timeSlot?.slotTime?.toString() || '',
+          serviceName: booking.serviceName || 'Standard Service',
+          appointmentNumber: booking.appointmentNumber,
+          notes: booking.notes || '',
+        },
+      ).catch(err => this.logger.error('Error sending cancellation email', err));
+    }
+
+    const response = this.mapToResponseDto(service);
+    this.logger.log(`Mapped response: ${JSON.stringify(response)}`);
+    return response;
   }
 
   /**

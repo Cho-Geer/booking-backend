@@ -14,11 +14,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FileUploadModule } from '../../common/file-upload/file-upload.module';
 import { ConfigModule } from '@nestjs/config';
 import { ConfigService } from '@nestjs/config';
+import { EmailModule } from '../email/email.module';
+import { JwtService } from '@nestjs/jwt';
 
 @Module({
   imports: [
     PrismaModule,
     FileUploadModule,
+    EmailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -31,7 +34,10 @@ import { ConfigService } from '@nestjs/config';
     }),
   ],
   controllers: [UsersController, UserAvatarController],
-  providers: [UsersService],
+  providers: [
+    UsersService,
+    JwtService,
+  ],
   exports: [UsersService], // 导出服务，供其他模块使用
 })
 export class UsersModule {}

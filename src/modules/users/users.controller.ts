@@ -28,6 +28,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators/index';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { UserType } from '@prisma/client';
+import { email } from 'zod';
 
 @ApiTags('用户管理')
 @ApiBearerAuth()
@@ -71,6 +72,7 @@ export class UsersController {
   @ApiOperation({ summary: '获取用户列表' })
   @ApiQuery({ name: 'name', required: false, description: '用户姓名' })
   @ApiQuery({ name: 'phone', required: false, description: '手机号' })
+  @ApiQuery({ name: 'email', required: false, description: '邮箱' })
   @ApiQuery({ name: 'role', required: false, enum: ['USER', 'ADMIN', 'SUPER_ADMIN'], description: '用户角色' })
   @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], description: '用户状态' })
   @ApiQuery({ name: 'startDate', required: false, description: '开始日期' })
@@ -87,6 +89,7 @@ export class UsersController {
     const query = {
       name: myQuery?.name,
       phone: myQuery?.phone,
+      email: myQuery?.email,
       userType: myQuery?.userType,
       status: myQuery?.status,
       startDate: myQuery?.startDate,
@@ -118,8 +121,33 @@ export class UsersController {
   }
 
   /**
+   * 切换用户状态
+   * @param id 用户 ID
+   * @param status 新的用户状态
+   * @param currentUser 当前登录用户
+   * @returns 更新后的用户信息
+   */
+  @Put(':id/status')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Permissions('users.update')
+  @ApiOperation({ summary: '切换用户状态' })
+  @ApiResponse({
+    status: 200,
+    description: '用户状态更新成功',
+    type: UserResponseDto,
+  })
+  async toggleUserStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('status') status: string,
+    @CurrentUser() currentUser: any,
+  ): Promise<ApiResponseDto<UserResponseDto>> {
+    const user = await this.usersService.toggleUserStatus(id, status);
+    return ApiResponseDto.success(user, '用户状态更新成功');
+  }
+  
+  /**
    * 更新用户信息
-   * @param id 用户ID
+   * @param id 用户 ID
    * @param updateUserDto 更新数据
    * @param currentUser 当前登录用户
    * @returns 更新后的用户信息

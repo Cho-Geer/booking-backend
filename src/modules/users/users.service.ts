@@ -5,24 +5,35 @@
  * @since 2024
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, AppointmentStatus } from '@prisma/client';
 import { CreateUserDto, UpdateUserDto, UserResponseDto, UserStatsDto, QueryUserDto } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { 
   ResourceNotFoundException, 
   PhoneNumberExistsException,
+  EmailExistsException,
   DatabaseException, 
   ValidationException
 } from '../../common/exceptions/business.exceptions';
 import * as crypto from 'crypto';
+import { EmailService } from '../email/email.service';
+import { JwtService } from '@nestjs/jwt';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
+import { MaskingUtil } from '../../common/utils/masking.util';
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+    private jwtService: JwtService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
   /**
    * 创建用户
@@ -55,9 +66,9 @@ export class UsersService {
       const user = await this.prisma.user.create({
         data: {
           name: createUserDto.name,
-          phone: this.maskPhoneNumber(createUserDto.phone),
+          phone: MaskingUtil.maskPhoneNumber(createUserDto.phone),
           phoneHash: this.hashPhoneNumber(createUserDto.phone),
-          email: createUserDto.email,
+          email: MaskingUtil.maskEmail(createUserDto.email) ?? undefined,
           userType: createUserDto.userType || 'CUSTOMER',
           status: createUserDto.status || 'ACTIVE',
         },
@@ -145,54 +156,228 @@ export class UsersService {
    */
   async updateUser(id: string, updateUserDto: UpdateUserDto): Promise<UserResponseDto> {
     this.logger.log(`更新用户信息: ${id}`);
-
-    // 检查用户是否存在
-    const existingUser = await this.prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingUser) {
-      throw new ResourceNotFoundException('用户');
-    }
-
-    // 检查手机号是否已被其他用户使用
-    if (updateUserDto.phone) {
-      const phoneHash = this.hashPhoneNumber(updateUserDto.phone);
-      const userWithPhone = await this.prisma.user.findFirst({
-        where: {
-          phoneHash,
-          id: { not: id },
-        },
+    try {
+      // 检查用户是否存在
+      const existingUser = await this.prisma.user.findUnique({
+        where: { id },
       });
-
-      if (userWithPhone) {
-        throw new PhoneNumberExistsException(updateUserDto.phone);
+  
+      if (!existingUser) {
+        throw new ResourceNotFoundException('用户');
       }
+  
+      // 检查手机号是否已被其他用户使用
+      if (updateUserDto.phone) {
+        const phoneHash = this.hashPhoneNumber(updateUserDto.phone);
+        const userWithPhone = await this.prisma.user.findFirst({
+          where: {
+            phoneHash,
+            id: { not: id },
+          },
+        });
+  
+        if (userWithPhone) {
+          throw new PhoneNumberExistsException(updateUserDto.phone);
+        }
+      }
+
+      // 检查邮箱是否已被其他用户使用
+      if (updateUserDto.email) {
+        const userWithEmail = await this.prisma.user.findFirst({
+          where: {
+            email: updateUserDto.email,
+            id: { not: id },  // 自分自身を除く
+          },
+        });
+
+        if (userWithEmail) {
+          throw new EmailExistsException(updateUserDto.email);
+        }  
+      }
+  
+      // 构建更新数据
+      const updateData: any = {};
+      if (updateUserDto.email) updateData.email = updateUserDto.email;
+      if (updateUserDto.name) updateData.name = updateUserDto.name;
+      if (updateUserDto.phone) {
+        updateData.phone = MaskingUtil.maskPhoneNumber(updateUserDto.phone);
+        updateData.phoneHash = this.hashPhoneNumber(updateUserDto.phone);
+      }
+      if (updateUserDto.userType) updateData.userType = updateUserDto.userType;
+      if (updateUserDto.status) updateData.status = updateUserDto.status;
+      if (updateUserDto.remarks !== undefined) updateData.remarks = updateUserDto.remarks;
+  
+      // 更新用户
+      const updatedUser = await this.prisma.user.update({
+        where: { id },
+        data: updateData,
+      });
+  
+      return this.mapToResponseDto(updatedUser);
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException) {
+        throw error;
+      }
+      if (error instanceof PhoneNumberExistsException || error instanceof EmailExistsException) {
+        throw error;
+      }
+      this.logger.error(`更新用户失败：${error.message}`, error.stack);
+      throw new DatabaseException('更新用户失败');
     }
-
-    // 构建更新数据
-    const updateData: any = {};
-    if (updateUserDto.name) updateData.name = updateUserDto.name;
-    if (updateUserDto.phone) {
-      updateData.phone = this.maskPhoneNumber(updateUserDto.phone);
-      updateData.phoneHash = this.hashPhoneNumber(updateUserDto.phone);
-    }
-    if (updateUserDto.userType) updateData.userType = updateUserDto.userType;
-    if (updateUserDto.status) updateData.status = updateUserDto.status;
-    if (updateUserDto.remarks !== undefined) updateData.remarks = updateUserDto.remarks;
-
-    // 更新用户
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: updateData,
-    });
-
-    return this.mapToResponseDto(updatedUser);
   }
 
   /**
+   * 切换用户状态
+   * @param id 用户 ID
+   * @param status 新的用户状态
+   * @returns 更新后的用户信息
+   */
+  async toggleUserStatus(id: string, status: string): Promise<UserResponseDto> {
+    this.logger.log(`切换用户状态：${id} to ${status}`);
+      
+    let bookingsToNotify: Array<{
+      customerEmail: string;
+      customerName: string;
+      appointmentDate: Date;
+      timeSlot?: { slotTime: any };
+      serviceName?: string;
+      appointmentNumber: string;
+      notes?: string;
+    }> = [];
+  
+    const user = await this.prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({
+        where: { id },
+      });
+  
+      if (!existingUser) {
+        throw new ResourceNotFoundException('用户不存在');
+      }
+  
+      // ACTIVE から他の状態へ変更する場合、トークンをブラックリストに入れ、予約をキャンセル
+      if (existingUser.status === 'ACTIVE' && status !== 'ACTIVE') {
+        this.logger.log(`ユーザー ${id} のステータスが ACTIVE から ${status} へ変更されます`);
+                
+        // ユーザーのアクティブセッションを取得してトークンをブラックリストに追加
+        const activeSessions = await tx.userSession.findMany({
+          where: { 
+            userId: id,
+            isActive: true,
+          },
+        });
+              
+        this.logger.log(`アクティブなセッション数：${activeSessions.length}`);
+              
+        // 各セッションのトークンをブラックリストに追加（Redis）
+        for (const session of activeSessions) {
+          // リフレッシュトークンをブラックリストに追加
+          if (session.refreshToken && session.refreshExpiresAt) {
+            const refreshTtl = session.refreshExpiresAt.getTime() - Date.now();
+            if (refreshTtl > 0) {
+              const refreshTokenHash = crypto.createHash('sha256').update(session.refreshToken).digest('hex');
+              await this.cacheManager.set(`blacklist:${refreshTokenHash}`, 1, refreshTtl);
+              this.logger.log(`リフレッシュトークンをブラックリストに追加：${refreshTokenHash.substring(0, 16)}...`);
+            }
+          }
+                
+          // セッションを無効化
+          await tx.userSession.update({
+            where: { id: session.id },
+            data: { isActive: false },
+          });
+        }
+                
+        // PENDING と CONFIRMED の予約をキャンセル
+        const activeBookings = await tx.appointment.findMany({
+          where: {
+            userId: id,
+            status: {
+              in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+            },
+          },
+          include: {
+            timeSlot: true,
+            service: true,
+          },
+        });
+      
+        this.logger.log(`アクティブな予約数：${activeBookings.length}`);
+      
+        for (const booking of activeBookings) {
+          await tx.appointment.update({
+            where: { id: booking.id },
+            data: {
+              status: AppointmentStatus.CANCELLED,
+              cancelledAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+      
+          // メール送信情報を保存（トランザクション外で送信）
+          if (booking.customerEmail) {
+            bookingsToNotify.push({
+              customerEmail: booking.customerEmail,
+              customerName: booking.customerName,
+              appointmentDate: booking.appointmentDate,
+              timeSlot: booking.timeSlot,
+              serviceName: booking.service?.name,
+              appointmentNumber: booking.appointmentNumber,
+              notes: booking.notes,
+            });
+          }
+        }
+      }
+  
+      // ユーザーのステータスを更新
+      const updatedUser = await tx.user.update({
+        where: { id },
+        data: {
+          status: status as any,
+        },
+      });
+        
+      this.logger.log(`ユーザー状態更新成功：${id}`);
+      return updatedUser;
+    });
+  
+    // トランザクションの外でメール送信（非同期）
+    // 1. 予約キャンセル通知メール
+    for (const booking of bookingsToNotify) {
+      this.emailService.sendBookingCancellation(
+        booking.customerEmail,
+        {
+          customerName: booking.customerName,
+          appointmentDate: booking.appointmentDate.toLocaleDateString('zh-CN'),
+          timeSlot: booking.timeSlot?.slotTime?.toString() || '',
+          serviceName: booking.serviceName || 'Standard Service',
+          appointmentNumber: booking.appointmentNumber,
+          notes: booking.notes || '',
+        },
+      ).catch(err => this.logger.error('Error sending cancellation email', err));
+    }
+      
+    // 2. ユーザー状態更新通知メール
+    const userEmail = user.email;
+    if (userEmail) {
+      this.emailService.sendBookingUpdate(
+        userEmail,
+        {
+          customerName: user.name,
+          appointmentDate: new Date().toLocaleDateString('zh-CN'),
+          timeSlot: '',
+          serviceName: '账户状态变更',
+          appointmentNumber: `USER-${user.id.substring(0, 8)}`,
+          notes: `您的账户状态已变更为：${status}`,
+        },
+      ).catch(err => this.logger.error('Error sending status update email', err));
+    }
+  
+    return this.mapToResponseDto(user);
+  }
+  
+  /**
    * 删除用户
-   * @param id 用户ID
+   * @param id 用户 ID
    */
   async deleteUser(id: string): Promise<void> {
     try {
@@ -200,23 +385,23 @@ export class UsersService {
       const existingUser = await this.prisma.user.findUnique({
         where: { id },
       });
-
+  
       if (!existingUser) {
         throw new ResourceNotFoundException('用户');
       }
-
+  
       // 删除用户
       await this.prisma.user.delete({
         where: { id },
       });
-
-      this.logger.log(`用户删除成功: ${id}`);
+  
+      this.logger.log(`用户删除成功：${id}`);
     } catch (error) {
       if (error instanceof ResourceNotFoundException) {
         throw error;
       }
-      
-      this.logger.error(`删除用户失败: ${error.message}`, error.stack);
+        
+      this.logger.error(`删除用户失败：${error.message}`, error.stack);
       throw new DatabaseException('删除用户失败');
     }
   }
@@ -247,6 +432,10 @@ export class UsersService {
       
       if (query.userType) {
         where.userType = query.userType;
+      }
+
+      if (query.email) {
+        where.email = query.email;
       }
       
       if (query.status) {
@@ -368,27 +557,16 @@ export class UsersService {
   }
 
   /**
-   * 对手机号进行脱敏处理
-   * @param phoneNumber 手机号
-   * @returns 脱敏后的手机号
-   */
-  private maskPhoneNumber(phoneNumber: string): string {
-    if (phoneNumber.length !== 11) {
-      return phoneNumber;
-    }
-    return phoneNumber.substring(0, 3) + '****' + phoneNumber.substring(7);
-  }
-
-  /**
-   * 将数据库用户对象转换为响应DTO
+   * 将数据库用户对象转换为响应 DTO
    * @param user 数据库用户对象
-   * @returns 用户响应DTO
+   * @returns 用户响应 DTO
    */
   private mapToResponseDto(user: any): UserResponseDto {
     return {
       id: user.id,
       name: user.name,
-      phone: user.phone,
+      phone: MaskingUtil.maskPhoneNumber(user.phone), // 電話番号を匿名化
+      email: MaskingUtil.maskEmail(user.email), // メールを匿名化
       userType: user.userType,
       status: user.status,
       remarks: user.remarks,

@@ -19,6 +19,7 @@ import {
   VerificationCodeException,
   DatabaseException,
   InvalidPhoneNumberException,
+  UserNotActiveException,
   ValidationException,
 } from '../../common/exceptions/business.exceptions';
 import { UsersService } from '../users/users.service';
@@ -182,7 +183,7 @@ export class AuthService {
       const user = await this.usersService.findUserById(payload.sub);
 
       if (!user || user.status !== UserStatus.ACTIVE) {
-        throw new AuthenticationException('用户不存在或已被禁用');
+        throw new UserNotActiveException('用户不存在或已被禁用');
       }
 
       // 生成新的令牌
