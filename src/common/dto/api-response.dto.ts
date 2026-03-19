@@ -238,8 +238,8 @@ export class PaginationQueryDto {
     return this.limit!;
   }
 
-  constructor({page, limit}: {page: number, limit: number}){
-    this.page = page;
-    this.limit = limit;
+  constructor(options?: {page?: number, limit?: number}){
+    this.page = options?.page ?? 1;
+    this.limit = options?.limit ?? 10;
   }
 }

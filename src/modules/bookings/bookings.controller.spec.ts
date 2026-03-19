@@ -136,7 +136,7 @@ describe('BookingsController', () => {
 
       const result = await controller.create(createDto, mockUser);
 
-      expect(service.createBooking).toHaveBeenCalledWith(createDto);
+      expect(service.createBooking).toHaveBeenCalledWith(createDto, mockUser.id);
       expect(result).toEqual(mockAppointment);
     });
 
@@ -154,7 +154,7 @@ describe('BookingsController', () => {
       await controller.create(createDto, mockUser);
 
       expect(createDto.userId).toBe(mockUser.id);
-      expect(service.createBooking).toHaveBeenCalledWith(createDto);
+      expect(service.createBooking).toHaveBeenCalledWith(createDto, mockUser.id);
     });
   });
 
@@ -177,7 +177,7 @@ describe('BookingsController', () => {
 
       const result = await controller.findAll(query, mockAdmin);
 
-      expect(service.findBookings).toHaveBeenCalledWith(query);
+      expect(service.findBookings).toHaveBeenCalledWith(query, mockAdmin.id);
       expect(result).toEqual(mockResult);
     });
 
@@ -200,7 +200,7 @@ describe('BookingsController', () => {
       await controller.findAll(query, mockUser);
 
       expect(query.userId).toBe(mockUser.id);
-      expect(service.findBookings).toHaveBeenCalledWith(query);
+      expect(service.findBookings).toHaveBeenCalledWith(query, mockUser.id);
     });
   });
 
@@ -255,7 +255,7 @@ describe('BookingsController', () => {
       const result = await controller.update('appointment-123', updateDto, mockUser);
 
       expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
-      expect(service.updateBooking).toHaveBeenCalledWith('appointment-123', updateDto);
+      expect(service.updateBooking).toHaveBeenCalledWith('appointment-123', updateDto, mockUser.id);
       expect(result).toEqual(updatedBooking);
     });
 

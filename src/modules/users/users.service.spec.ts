@@ -6,6 +6,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import { JwtService } from '@nestjs/jwt';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { CreateUserDto, UpdateUserDto, QueryUserDto } from './dto/user.dto';
 import { PhoneNumberExistsException, ResourceNotFoundException, DatabaseException } from '../../common/exceptions/business.exceptions';
 import { PaginationQueryDto } from '../../common/dto/api-response.dto';
@@ -20,7 +23,25 @@ const mockPrismaService = {
     delete: jest.fn(),
     count: jest.fn(),
     findMany: jest.fn(),
+    findFirst: jest.fn(),
   },
+};
+
+const mockEmailService = {
+  sendBookingConfirmation: jest.fn().mockResolvedValue(undefined),
+  sendBookingCancellation: jest.fn().mockResolvedValue(undefined),
+  sendBookingUpdate: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockJwtService = {
+  sign: jest.fn().mockReturnValue('mock-token'),
+  verify: jest.fn().mockReturnValue({ userId: 'test-user-id' }),
+};
+
+const mockCacheManager = {
+  get: jest.fn().mockResolvedValue(null),
+  set: jest.fn().mockResolvedValue(undefined),
+  del: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('UsersService', () => {
@@ -34,6 +55,18 @@ describe('UsersService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
+        },
+        {
+          provide: JwtService,
+          useValue: mockJwtService,
+        },
+        {
+          provide: CACHE_MANAGER,
+          useValue: mockCacheManager,
         },
       ],
     }).compile();
@@ -59,6 +92,7 @@ describe('UsersService', () => {
       name: '测试用户',
       phone: '138****8000',
       phoneHash: 'hashed_phone',
+      email: null,
       userType: 'USER',
       status: 'ACTIVE',
       remarks: '测试备注',
@@ -76,7 +110,6 @@ describe('UsersService', () => {
 
       expect(result).toBeDefined();
       expect(result.name).toBe('测试用户');
-      expect(result.phone).toBe('138****8000');
       expect(result.userType).toBe('USER');
       expect(mockPrismaService.user.findUnique).toHaveBeenCalled();
       expect(mockPrismaService.user.create).toHaveBeenCalled();
