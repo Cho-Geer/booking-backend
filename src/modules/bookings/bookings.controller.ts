@@ -230,7 +230,6 @@ export class BookingsController {
    * @returns 更新后的预约信息
    */
   @Patch(':id')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '更新预约', description: '更新预约信息' })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -278,7 +277,6 @@ export class BookingsController {
    * @param user 当前用户信息
    */
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '取消预约', description: '取消指定的预约' })
   @ApiResponse({ status: HttpStatus.NO_CONTENT, description: '取消成功' })
@@ -311,7 +309,6 @@ export class BookingsController {
    * @returns 取消结果
    */
   @Patch(':id/cancel')
-  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)  // 明确指定返回 200 状态码
   @ApiOperation({ summary: '取消预约', description: '取消指定的预约' })
   @ApiResponse({ status: HttpStatus.OK, description: '取消成功' })

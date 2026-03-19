@@ -147,7 +147,8 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   /**
-   * 从JWT载荷中获取用户信息
+   * 从JWT载荷中获取用户信息，并检测角色是否已发生变更
+   * 若 JWT 中记录的角色与数据库当前角色不一致，则抛出专用异常让前端处理跳转
    * @param payload JWT载荷
    * @returns 用户信息
    */
@@ -173,12 +174,30 @@ export class JwtAuthGuard implements CanActivate {
       },
     });
 
-    // 添加角色信息
+    // 添加角色信息（始终使用数据库中的最新角色，不受 JWT 载荷中旧角色的影响）
     if (user) {
-      // 确保角色信息正确设置
-      (user as any).roles = role ? (Array.isArray(role) ? role : [role]) : [userType || user.userType];
-      (user as any).role = userType || user.userType;
-      (user as any).userType = userType || user.userType;  // 确保userType字段存在
+      // JWT 中存储的旧角色（generateTokens 中以 role 字段存储，userType 字段在 payload 中不存在）
+      const jwtRole = (role || userType || '').toString().toUpperCase();
+      // 数据库中的最新角色
+      const dbRole = (user.userType || '').toString().toUpperCase();
+
+      // 检测角色是否已发生变更
+      if (jwtRole && dbRole && jwtRole !== dbRole) {
+        if (jwtRole === 'ADMIN' && dbRole !== 'ADMIN') {
+          // ADMIN → 普通用户：降权，需要强制前端重新登录
+          this.logger.warn(`角色降权检测: 用户 ${userId} JWT角色=${jwtRole} 数据库角色=${dbRole}，拒绝访问`);
+          throw new AuthenticationException('用户角色已降级，请重新登录');
+        } else if (jwtRole !== 'ADMIN' && dbRole === 'ADMIN') {
+          // 普通用户 → ADMIN：升权，需要引导前端跳转到管理页面
+          this.logger.warn(`角色升权检测: 用户 ${userId} JWT角色=${jwtRole} 数据库角色=${dbRole}，引导跳转管理页`);
+          throw new AuthenticationException('用户角色已升级，请重新登录');
+        }
+      }
+
+      // 以数据库角色为准设置 role / userType 字段
+      (user as any).roles = [user.userType];
+      (user as any).role = user.userType;
+      (user as any).userType = user.userType;
       this.logger.log(`用户信息: ${JSON.stringify(user)}`);
     }
 
