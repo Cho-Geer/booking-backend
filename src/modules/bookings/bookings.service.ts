@@ -39,9 +39,10 @@ export class BookingsService {
   /**
    * 创建预约
    * @param createAppointmentDto 创建预约数据
+   * @param requestingUserId 请求用户的ID（用于预约所有者返回真实数据）
    * @returns 创建的预约信息
    */
-  async createBooking(createAppointmentDto: CreateAppointmentDto): Promise<AppointmentResponseDto> {
+  async createBooking(createAppointmentDto: CreateAppointmentDto, requestingUserId?: string): Promise<AppointmentResponseDto> {
     try {
       const appointmentDate = new Date(createAppointmentDto.appointmentDate);
       let serviceId: string | undefined = createAppointmentDto.serviceId;
@@ -138,7 +139,7 @@ export class BookingsService {
         }).catch(err => this.logger.error('Error triggering email confirmation', err));
       }
 
-      return this.mapToResponseDto(appointment);
+      return this.mapToResponseDto(appointment, requestingUserId ?? createAppointmentDto.userId);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -159,9 +160,10 @@ export class BookingsService {
   /**
    * 根据ID查找预约
    * @param id 预约ID
+   * @param requestingUserId 请求用户的ID（用于预约所有者返回真实数据）
    * @returns 预约信息
    */
-  async findBookingById(id: string): Promise<AppointmentResponseDto> {
+  async findBookingById(id: string, requestingUserId?: string): Promise<AppointmentResponseDto> {
     try {
       const appointment = await this.prisma.appointment.findUnique({
         where: { id },
@@ -176,7 +178,7 @@ export class BookingsService {
         throw new ResourceNotFoundException('预约');
       }
 
-      return this.mapToResponseDto(appointment);
+      return this.mapToResponseDto(appointment, requestingUserId);
     } catch (error) {
       if (error instanceof ResourceNotFoundException) {
         throw error;
@@ -190,9 +192,10 @@ export class BookingsService {
    * 更新预约
    * @param id 预约ID
    * @param updateAppointmentDto 更新数据
+   * @param requestingUserId 请求用户的ID（用于预约所有者返回真实数据）
    * @returns 更新后的预约信息
    */
-  async updateBooking(id: string, updateAppointmentDto: UpdateAppointmentDto): Promise<AppointmentResponseDto> {
+  async updateBooking(id: string, updateAppointmentDto: UpdateAppointmentDto, requestingUserId?: string): Promise<AppointmentResponseDto> {
     try {
       this.logger.log(`开始更新预约 ${id}: ${JSON.stringify(updateAppointmentDto)}`);
         
@@ -287,7 +290,7 @@ export class BookingsService {
         }).catch(err => this.logger.error('Error triggering email update', err));
       }
 
-      return this.mapToResponseDto(appointment);
+      return this.mapToResponseDto(appointment, requestingUserId);
     } catch (error) {
       this.logger.error(`更新预约失败: ${error.message}`, error.stack);
       if (error instanceof ResourceNotFoundException) {
@@ -304,9 +307,10 @@ export class BookingsService {
    * 取消预约
    * @param id 预约ID
    * @param userId 用户ID（用于权限检查）
+   * @param requestingUserId 请求用户的ID（用于预约所有者返回真实数据）
    * @returns 取消后的预约信息
    */
-  async cancelBooking(id: string, userId?: string, userType?: UserType): Promise<AppointmentResponseDto> {
+  async cancelBooking(id: string, userId?: string, userType?: UserType, requestingUserId?: string): Promise<AppointmentResponseDto> {
     try {
       // 检查预约是否存在
       const existingAppointment = await this.prisma.appointment.findUnique({
@@ -364,7 +368,7 @@ export class BookingsService {
         }).catch(err => this.logger.error('Error triggering email cancellation', err));
       }
 
-      return this.mapToResponseDto(appointment);
+      return this.mapToResponseDto(appointment, requestingUserId);
     } catch (error) {
       if (error instanceof ResourceNotFoundException || 
           error instanceof AuthorizationException ||
@@ -379,9 +383,10 @@ export class BookingsService {
   /**
    * 查询预约列表
    * @param query 查询条件
+   * @param requestingUserId 请求用户的ID（用于预约所有者返回真实数据）
    * @returns 预约列表
    */
-  async findBookings(query: AppointmentQueryDto): Promise<AppointmentListResponseDto> {
+  async findBookings(query: AppointmentQueryDto, requestingUserId?: string): Promise<AppointmentListResponseDto> {
     try {
       const { page = 1, limit = 10, status, userId, timeSlotId, startDate, endDate, keyword } = query;
       // 确保page和limit是数字类型
@@ -449,7 +454,8 @@ export class BookingsService {
 
       const items = appointments.map(appointment => {
         try {
-          return this.mapToResponseDto(appointment);
+          // 传入 requestingUserId 以便所有者能看到真实数据
+          return this.mapToResponseDto(appointment, requestingUserId);
         } catch (error) {
           this.logger.error(`映射预约数据失败: ${error.message}`, error);
           throw error;
@@ -494,9 +500,10 @@ export class BookingsService {
    * 获取指定日期的所有预约（无分页）
    * @param date 日期
    * @param userId 用户 ID（用于过滤）
+   * @param requestingUserId 请求用户的ID（用于预约所有者返回真实数据）
    * @returns 该日期的所有预约
    */
-  async findAllBookingsByDate(date: string, userId?: string): Promise<AppointmentListResponseDto> {
+  async findAllBookingsByDate(date: string, userId?: string, requestingUserId?: string): Promise<AppointmentListResponseDto> {
     try {
       this.logger.log(`查询日期 ${date} 的所有预约，userId: ${userId || 'all'}`);
   
@@ -526,7 +533,8 @@ export class BookingsService {
   
       const items = appointments.map(appointment => {
         try {
-          return this.mapToResponseDto(appointment);
+          // 传入 requestingUserId 以便所有者能看到真实数据
+          return this.mapToResponseDto(appointment, requestingUserId);
         } catch (error) {
           this.logger.error(`映射预约数据失败：${error.message}`, error);
           throw error;
@@ -633,9 +641,10 @@ export class BookingsService {
   /**
    * 将预约实体转换为响应DTO
    * @param appointment 预约实体
+   * @param requestingUserId 请求用户的ID（预约所有者时跳过敏感字段脱敏）
    * @returns 预约响应DTO
    */
-  private mapToResponseDto(appointment: any): AppointmentResponseDto {
+  private mapToResponseDto(appointment: any, requestingUserId?: string): AppointmentResponseDto {
     // 确保状态值是有效的枚举值
     let status: AppointmentStatusEnum;
     switch (appointment.status) {
@@ -655,6 +664,9 @@ export class BookingsService {
         status = AppointmentStatusEnum.PENDING;
     }
 
+    // 判断请求用户是否是预约所有者：所有者可查看真实手机号和邮箱，其他用户（包括管理员）看脱敏数据
+    const isOwner = !!requestingUserId && appointment.userId === requestingUserId;
+
     return {
       id: appointment.id,
       appointmentNumber: appointment.appointmentNumber,
@@ -662,8 +674,12 @@ export class BookingsService {
       timeSlotId: appointment.timeSlotId,
       appointmentDate: appointment.appointmentDate,
       customerName: appointment.customerName,
-      customerPhone: MaskingUtil.maskPhoneNumber(appointment.customerPhone), // 電話番号を匿名化
-      customerEmail: MaskingUtil.maskEmail(appointment.customerEmail), // メールを匿名化
+      customerPhone: isOwner
+        ? appointment.customerPhone // 预约所有者返回真实手机号
+        : MaskingUtil.maskPhoneNumber(appointment.customerPhone), // 非所有者返回脱敏手机号
+      customerEmail: isOwner
+        ? appointment.customerEmail // 预约所有者返回真实邮箱
+        : MaskingUtil.maskEmail(appointment.customerEmail), // 非所有者返回脱敏邮箱
       customerWechat: appointment.customerWechat,
       status: status,
       notes: appointment.notes,

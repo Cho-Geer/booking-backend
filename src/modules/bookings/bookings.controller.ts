@@ -86,7 +86,7 @@ export class BookingsController {
       createAppointmentDto.userId = user.id;
     }
     
-    return await this.bookingsService.createBooking(createAppointmentDto);
+    return await this.bookingsService.createBooking(createAppointmentDto, user.id);
   }
 
   /**
@@ -115,7 +115,7 @@ export class BookingsController {
       }
       
       this.logger.log(`查询条件: ${JSON.stringify(query)}`);
-      const result = await this.bookingsService.findBookings(query);
+      const result = await this.bookingsService.findBookings(query, user.id);
       this.logger.log(`查询结果: ${JSON.stringify(result)}`);
       return result;
     } catch (error) {
@@ -162,7 +162,7 @@ export class BookingsController {
     // 非管理员用户只能查看自己的预约
     const userId = user.userType !== UserType.ADMIN ? user.id : undefined;
     
-    return await this.bookingsService.findAllBookingsByDate(date, userId);
+    return await this.bookingsService.findAllBookingsByDate(date, userId, user.id);
   }
 
   /**
@@ -264,7 +264,7 @@ export class BookingsController {
       // 记录DTO验证信息
       this.logger.log(`更新DTO验证结果: ${JSON.stringify(updateAppointmentDto)}`);
       
-      return await this.bookingsService.updateBooking(id, updateAppointmentDto);
+      return await this.bookingsService.updateBooking(id, updateAppointmentDto, user.id);
     } catch (error) {
       this.logger.error(`更新预约 ${id} 失败: ${error.message}`, error.stack);
       throw error;
