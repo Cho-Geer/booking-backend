@@ -4,3 +4,6 @@
 /.env
 /docs
 /logs/*
+/.env.development
+/.env.production
+/.qoder
