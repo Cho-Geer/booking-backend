@@ -3,7 +3,8 @@
 /coverage
 
 /.env
-/docs
+/docs/*
+!/docs/api-contract.md
 /logs/*
 /.qoder
 /.sfdx
