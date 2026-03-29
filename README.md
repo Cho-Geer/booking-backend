@@ -18,7 +18,9 @@ Detailed endpoint contract: [docs/api-contract.md](./docs/api-contract.md)
 
 ## Current Modules
 
-The application currently wires these modules in [src/app.module.ts](./src/app.module.ts):
+The application currently wires these modules in [src/app.module.ts](./src/app.module.ts).
+
+Business modules:
 
 - `auth`
 - `users`
@@ -27,6 +29,9 @@ The application currently wires these modules in [src/app.module.ts](./src/app.m
 - `time-slots`
 - `email`
 - `retention`
+
+Shared infrastructure:
+
 - `common/database`
 - `common/prisma`
 - `common/file-upload`
@@ -163,6 +168,8 @@ Example env files are included:
 - `.env.example`
 - `.env.production.example`
 
+For local development, copy `.env.example` to `.env.development` and adjust values for your machine.
+
 Do not commit real environment files with secrets.
 
 Important variables include:
@@ -198,6 +205,8 @@ Start the development server:
 ```bash
 npm run start:dev
 ```
+
+The default local frontend is expected at `http://localhost:3000`, and the backend API runs at `http://localhost:3001`.
 
 Expected local URL:
 
@@ -259,7 +268,7 @@ The included [docker-compose.yml](./docker-compose.yml) starts infrastructure se
 Start them with:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 The NestJS API itself is started separately with the npm scripts above.
