@@ -123,6 +123,9 @@ export class UserInfoResponseDto {
   @ApiProperty({ description: '手机号' })
   phoneNumber: string;
 
+  @ApiProperty({ description: '邮箱' })
+  email?: string;
+
   @ApiProperty({ description: '用户角色' })
   role: string;
 

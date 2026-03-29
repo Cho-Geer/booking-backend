@@ -54,10 +54,7 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 export class BookingsController {
   private readonly logger = new Logger(BookingsController.name);
 
-  constructor(
-    private readonly bookingsService: BookingsService,
-    private readonly timeSlotsService: TimeSlotsService
-  ) {}
+  constructor(private readonly bookingsService: BookingsService) {}
 
   /**
    * 创建预约
@@ -78,15 +75,14 @@ export class BookingsController {
   async create(
     @Body() createAppointmentDto: CreateAppointmentDto,  // 移除ValidationPipe
     @CurrentUser() user: any,
-  ): Promise<AppointmentResponseDto> {
-    this.logger.log(`用户 ${user.id} 创建预约: ${JSON.stringify(createAppointmentDto)}`);
-    
+  ): Promise<ApiResponseDto> {
     // 如果DTO中没有提供userId，使用当前用户ID
     if (!createAppointmentDto.userId) {
       createAppointmentDto.userId = user.id;
     }
     
-    return await this.bookingsService.createBooking(createAppointmentDto, user.id);
+    const result = await this.bookingsService.createBooking(createAppointmentDto, user.id);
+    return ApiResponseDto.success(result);
   }
 
   /**
@@ -129,13 +125,14 @@ export class BookingsController {
    * @param query 查询参数
    * @returns 可用时间段列表
    */
-  @Get('available-slots')
-  @ApiOperation({ summary: '获取可用时间段', description: '获取指定日期的可用时间段' })
-  @ApiResponse({ status: 200, description: '获取成功' })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  async getAvailableSlots(@Query() query: TimeSlotAvailabilityDto) {
-    return this.timeSlotsService.getAvailability(query);
-  }
+  // @Get('available-slots')
+  // @ApiOperation({ summary: '获取可用时间段', description: '获取指定日期的可用时间段' })
+  // @ApiResponse({ status: 200, description: '获取成功' })
+  // @ApiResponse({ status: 400, description: '参数错误' })
+  // async getAvailableSlots(@Query() query: TimeSlotAvailabilityDto): Promise<ApiResponseDto> {
+  //   const result = await this.timeSlotsService.getAvailability(query);
+  //   return ApiResponseDto.success(result);
+  // }
 
   /**
    * 获取指定日期的所有预约（无分页）

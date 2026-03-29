@@ -8,3 +8,5 @@
 /.sfdx
 /.trae
 /.trae-aicc
+/.env.production
+/.env.development

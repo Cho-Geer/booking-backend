@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoginDto, RegisterDto, LoginResponseDto, RefreshTokenDto, VerificationCodeType } from './dto/auth.dto';
+import { LoginDto, RegisterDto, LoginResponseDto, RefreshTokenDto, VerificationCodeType, UserInfoResponseDto } from './dto/auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import {
   AuthenticationException,
@@ -350,7 +350,7 @@ export class AuthService {
    * @param userId 用户ID
    * @returns 用户信息
    */
-  async getUserProfile(userId: string): Promise<any> {
+  async getUserProfile(userId: string): Promise<UserInfoResponseDto> {
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
@@ -370,7 +370,7 @@ export class AuthService {
         throw new ResourceNotFoundException('用户不存在');
       }
 
-      return user;
+      return this.mapToResponseDto(user);
     } catch (error) {
       this.logger.error(`获取用户信息失败: ${error.message}`, error.stack);
       if (error instanceof ResourceNotFoundException) {
@@ -519,5 +519,24 @@ export class AuthService {
       this.logger.error(`验证令牌失败: ${error.message}`);
       throw new AuthenticationException('令牌无效');
     }
+  }
+
+  /**
+   * 将预约实体转换为响应DTO
+   * @param user 用户实体
+   * @returns 用户响应DTO
+   */
+  private mapToResponseDto(user: any): UserInfoResponseDto {
+    return {
+      id: user.id,
+      name: user.name,
+      phoneNumber: user.phone,
+      email: user.email,
+      role: user.userType,
+      status: user.status,
+      remarks: user.remarks,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 }
