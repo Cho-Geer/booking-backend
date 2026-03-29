@@ -34,31 +34,92 @@ The application currently wires these modules in [src/app.module.ts](./src/app.m
 
 ## API Overview
 
-The app starts with the global prefix `v1`, so routes are exposed under `/v1/...`.
+The local backend runs at:
 
-Examples of implemented routes:
+```text
+http://localhost:3001
+```
+
+The app sets the global API prefix to `/v1`, so application endpoints are exposed under:
+
+```text
+http://localhost:3001/v1/...
+```
+
+Swagger UI is available at:
+
+```text
+http://localhost:3001/api/docs
+```
+
+### Main Contract For This Branch
+
+These are the main endpoints reviewers and frontend work should treat as the current contract:
 
 - `POST /v1/auth/login`
-- `POST /v1/auth/register`
-- `POST /v1/auth/send-verification-code`
-- `POST /v1/auth/refresh`
-- `GET /v1/auth/profile`
-- `GET /v1/auth/verify`
-- `GET /v1/bookings/all`
-- `GET /v1/bookings/by-date`
 - `POST /v1/bookings`
+- `GET /v1/bookings/all`
+- `GET /v1/bookings/by-date?date=YYYY-MM-DD`
+- `GET /v1/bookings/:id`
 - `PATCH /v1/bookings/:id`
 - `PATCH /v1/bookings/:id/cancel`
+- `GET /v1/time-slots/available-slots?date=YYYY-MM-DD`
 - `GET /v1/services`
 - `GET /v1/services/all`
-- `POST /v1/services/admin`
-- `GET /v1/time-slots`
-- `GET /v1/time-slots/available-slots`
-- `GET /v1/users/profile/me`
-- `GET /v1/users/statistics`
-- `GET /v1/system/settings`
 
-Swagger UI is available at `/api/docs`.
+### Important Booking Rules
+
+- `/bookings/all` is the shared list endpoint for both user and admin clients in this branch.
+- For non-admin users, the backend narrows `/bookings/all` to the current authenticated user even if the incoming query is broader.
+- `/bookings/me` is not adopted in this branch and should not be treated as part of the contract.
+
+### Endpoint Notes
+
+#### Auth
+
+- `POST /v1/auth/login`
+  Phone number plus verification code login.
+  Returns login payload and sets auth cookies.
+
+#### Bookings
+
+- `POST /v1/bookings`
+  Creates a booking for the authenticated user.
+  If `userId` is omitted, backend fills it from the current user.
+
+- `GET /v1/bookings/all`
+  Shared user/admin list endpoint.
+  Accepts booking query filters and pagination params.
+  Non-admin users are restricted server-side to their own records.
+
+- `GET /v1/bookings/by-date?date=YYYY-MM-DD`
+  Returns bookings for a single date.
+  Used for date-based availability and calendar style views.
+
+- `GET /v1/bookings/:id`
+  Returns a single booking by id.
+  Non-admin users can only access their own booking.
+
+- `PATCH /v1/bookings/:id`
+  Updates a booking.
+  Non-admin users can only update their own booking.
+
+- `PATCH /v1/bookings/:id/cancel`
+  Frontend-compatible cancel endpoint for this branch.
+
+#### Time Slots
+
+- `GET /v1/time-slots/available-slots?date=YYYY-MM-DD`
+  Returns slot availability for a single day.
+  `date` must be passed in `YYYY-MM-DD` format.
+
+#### Services
+
+- `GET /v1/services`
+  Shared service list endpoint used by booking flows.
+
+- `GET /v1/services/all`
+  Admin-oriented service list endpoint with pagination/filtering support.
 
 ## Runtime Features
 
@@ -107,6 +168,7 @@ Do not commit real environment files with secrets.
 Important variables include:
 
 - `PORT`
+- `API_PREFIX`
 - `DATABASE_URL`
 - `REDIS_HOST`
 - `REDIS_PORT`
@@ -114,6 +176,14 @@ Important variables include:
 - `JWT_REFRESH_SECRET`
 - `FRONTEND_URL` or `FRONTEND_URLS`
 - `CSRF_ENABLED`
+
+Environment notes:
+
+- `PORT=3001` is the expected local backend port for this branch.
+- `API_PREFIX=/v1` remains in the sample because runtime code still references `process.env.API_PREFIX` when mounting CSRF middleware.
+- `/v1` is the API contract for this branch.
+- `FRONTEND_URL` is the legacy single-origin CORS setting.
+- `FRONTEND_URLS` is the multi-origin CORS allowlist for setups that need more than one allowed frontend origin.
 
 ## Local Development
 
@@ -127,6 +197,12 @@ Start the development server:
 
 ```bash
 npm run start:dev
+```
+
+Expected local URL:
+
+```text
+http://localhost:3001
 ```
 
 Build for production:

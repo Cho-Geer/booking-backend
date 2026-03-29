@@ -1,12 +1,31 @@
 # API Contract
 
-This document is the current single source of truth for the frontend/backend API contract in this branch.
+This document is the detailed API contract for this branch.
 
-All paths below are relative to the backend global prefix `/v1`.
+Use this file as the single source of truth for frontend/backend integration details. The READMEs intentionally stay shorter and should defer to this document for endpoint-level behavior.
 
-## Shared Response Envelope
+Base URL in local development:
 
-Most successful endpoints are wrapped in the backend `ApiResponseDto` shape:
+```text
+http://localhost:3001
+```
+
+Global API prefix:
+
+```text
+/v1
+```
+
+## Shared Conventions
+
+### Auth Transport
+
+- The backend uses HttpOnly cookies for `access_token` and `refresh_token`.
+- A `csrf_token` cookie is also used for mutation requests when CSRF protection is enabled.
+
+### Response Envelope
+
+Most successful endpoints use the backend `ApiResponseDto` envelope:
 
 ```json
 {
@@ -14,15 +33,29 @@ Most successful endpoints are wrapped in the backend `ApiResponseDto` shape:
   "message": "Operation succeeded",
   "data": {},
   "requestId": "req_xxx",
-  "timestamp": "2026-03-29T00:00:00.000Z"
+  "timestamp": "2026-03-30T00:00:00.000Z"
 }
 ```
 
-Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`, and `data.totalPages`.
+Some booking list flows return the list payload directly from the controller/service path rather than being wrapped in `data`. That is part of the current branch contract and is documented below endpoint-by-endpoint.
+
+### Pagination Shape
+
+List endpoints that paginate use this shape:
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "page": 1,
+  "limit": 10,
+  "totalPages": 0
+}
+```
 
 ## Auth
 
-### Login
+### `POST /v1/auth/login`
 
 - method: `POST`
 - path: `/v1/auth/login`
@@ -61,10 +94,10 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  Login uses phone number plus verification code.
-  The backend also sets `access_token`, `refresh_token`, and `csrf_token` cookies.
+  Uses phone number plus verification code.
+  Also sets `access_token`, `refresh_token`, and `csrf_token` cookies.
 
-### Register
+### `POST /v1/auth/register`
 
 - method: `POST`
 - path: `/v1/auth/register`
@@ -107,7 +140,7 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 - notes:
   Registration also sets auth cookies on success.
 
-### Send Verification Code
+### `POST /v1/auth/send-verification-code`
 
 - method: `POST`
 - path: `/v1/auth/send-verification-code`
@@ -134,9 +167,9 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  `type` is one of `login` or `register`.
+  `type` must be `login` or `register`.
 
-### Refresh Token
+### `POST /v1/auth/refresh`
 
 - method: `POST`
 - path: `/v1/auth/refresh`
@@ -174,9 +207,9 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  Backend prefers the `refresh_token` cookie when present and falls back to `body.refreshToken`.
+  The backend prefers the `refresh_token` cookie when present and falls back to `body.refreshToken`.
 
-### Logout
+### `POST /v1/auth/logout`
 
 - method: `POST`
 - path: `/v1/auth/logout`
@@ -200,15 +233,15 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  Backend clears `access_token`, `refresh_token`, and `csrf_token` cookies.
+  Clears `access_token`, `refresh_token`, and `csrf_token` cookies.
 
-### Get Profile
+### `GET /v1/auth/profile`
 
 - method: `GET`
 - path: `/v1/auth/profile`
 - auth required?: `Yes`
 - request shape:
-  No body.
+  No request body.
 
 - response shape:
 
@@ -224,8 +257,8 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
     "role": "ADMIN",
     "status": "ACTIVE",
     "remarks": "",
-    "createdAt": "2026-03-29T00:00:00.000Z",
-    "updatedAt": "2026-03-29T00:00:00.000Z"
+    "createdAt": "2026-03-30T00:00:00.000Z",
+    "updatedAt": "2026-03-30T00:00:00.000Z"
   },
   "requestId": "req_xxx",
   "timestamp": "..."
@@ -233,15 +266,15 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  Current frontend auth bootstrap should treat this as the canonical current-user endpoint.
+  Treat this as the canonical "current user" endpoint for this branch.
 
-### Verify Token
+### `GET /v1/auth/verify`
 
 - method: `GET`
 - path: `/v1/auth/verify`
 - auth required?: `Yes`
 - request shape:
-  No body.
+  No request body.
 
 - response shape:
 
@@ -264,7 +297,7 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 
 ## Bookings
 
-### Create Booking
+### `POST /v1/bookings`
 
 - method: `POST`
 - path: `/v1/bookings`
@@ -276,7 +309,7 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
   "timeSlotId": "uuid",
   "userId": "uuid",
   "serviceId": "uuid",
-  "appointmentDate": "2026-03-29",
+  "appointmentDate": "2026-03-30",
   "customerName": "Alice",
   "customerPhone": "13800138000",
   "customerEmail": "alice@example.com",
@@ -294,10 +327,10 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
   "message": "Booking created",
   "data": {
     "id": "uuid",
-    "appointmentNumber": "AP-20260329-0001",
+    "appointmentNumber": "AP-20260330-0001",
     "timeSlotId": "uuid",
     "userId": "uuid",
-    "appointmentDate": "2026-03-29T00:00:00.000Z",
+    "appointmentDate": "2026-03-30T00:00:00.000Z",
     "status": "PENDING",
     "customerName": "Alice",
     "customerPhone": "13800138000",
@@ -319,8 +352,8 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
     },
     "confirmationSent": false,
     "reminderSent": false,
-    "createdAt": "2026-03-29T00:00:00.000Z",
-    "updatedAt": "2026-03-29T00:00:00.000Z"
+    "createdAt": "2026-03-30T00:00:00.000Z",
+    "updatedAt": "2026-03-30T00:00:00.000Z"
   },
   "requestId": "req_xxx",
   "timestamp": "..."
@@ -328,15 +361,15 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  If `userId` is omitted, backend fills it from `currentUser.id`.
+  If `userId` is omitted, the backend fills it from `currentUser.id`.
 
-### List Bookings
+### `GET /v1/bookings/all`
 
 - method: `GET`
 - path: `/v1/bookings/all`
 - auth required?: `Yes`
 - request shape:
-  Query params may include `userId`, `timeSlotId`, `status`, `customerName`, `customerPhone`, `startDate`, `endDate`, `page`, `limit`, `keyword`.
+  Query params may include `userId`, `timeSlotId`, `status`, `customerName`, `customerPhone`, `startDate`, `endDate`, `page`, `limit`, and `keyword`.
 
 - response shape:
 
@@ -345,10 +378,10 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
   "items": [
     {
       "id": "uuid",
-      "appointmentNumber": "AP-20260329-0001",
+      "appointmentNumber": "AP-20260330-0001",
       "timeSlotId": "uuid",
       "userId": "uuid",
-      "appointmentDate": "2026-03-29T00:00:00.000Z",
+      "appointmentDate": "2026-03-30T00:00:00.000Z",
       "status": "PENDING",
       "customerName": "Alice",
       "customerPhone": "13800138000"
@@ -362,11 +395,11 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  `/bookings/all` is shared by both user and admin clients.
-  Non-admin users are narrowed to the current user by backend logic even if a broader query is sent.
-  `/bookings/me` is not adopted in this branch.
+  `/bookings/all` is the shared list endpoint for both user and admin clients.
+  Non-admin users are narrowed to the current authenticated user by backend logic even if the incoming query is broader.
+  `/bookings/me` is not introduced in this branch and must not be treated as part of the contract.
 
-### List Bookings By Date
+### `GET /v1/bookings/by-date?date=YYYY-MM-DD`
 
 - method: `GET`
 - path: `/v1/bookings/by-date`
@@ -384,7 +417,7 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
   "items": [
     {
       "id": "uuid",
-      "appointmentNumber": "AP-20260329-0001",
+      "appointmentNumber": "AP-20260330-0001",
       "status": "PENDING",
       "customerName": "Alice"
     }
@@ -397,23 +430,37 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
+  Used for date-specific booking views and date-based availability support.
   Non-admin users are also filtered to their own records here.
 
-### Get Booking Detail
+### `GET /v1/bookings/:id`
 
 - method: `GET`
 - path: `/v1/bookings/:id`
 - auth required?: `Yes`
 - request shape:
-  No body.
+  No request body.
 
 - response shape:
-  Returns a single booking object shaped like `AppointmentResponseDto`.
+
+```json
+{
+  "id": "uuid",
+  "appointmentNumber": "AP-20260330-0001",
+  "timeSlotId": "uuid",
+  "userId": "uuid",
+  "appointmentDate": "2026-03-30T00:00:00.000Z",
+  "status": "PENDING",
+  "customerName": "Alice",
+  "customerPhone": "13800138000"
+}
+```
 
 - notes:
+  Returns a single booking object rather than a wrapped paginated payload.
   Non-admin users can only access their own booking.
 
-### Update Booking
+### `PATCH /v1/bookings/:id`
 
 - method: `PATCH`
 - path: `/v1/bookings/:id`
@@ -423,7 +470,7 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```json
 {
   "status": "CONFIRMED",
-  "appointmentDate": "2026-03-30",
+  "appointmentDate": "2026-03-31",
   "timeSlotId": "uuid",
   "serviceId": "uuid",
   "customerName": "Alice",
@@ -435,12 +482,24 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - response shape:
-  Success envelope with a single updated booking in `data`.
+
+```json
+{
+  "code": 200,
+  "message": "Booking updated",
+  "data": {
+    "id": "uuid",
+    "status": "CONFIRMED"
+  },
+  "requestId": "req_xxx",
+  "timestamp": "..."
+}
+```
 
 - notes:
   Non-admin users can only update their own booking.
 
-### Cancel Booking
+### `PATCH /v1/bookings/:id/cancel`
 
 - method: `PATCH`
 - path: `/v1/bookings/:id/cancel`
@@ -468,13 +527,13 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 
 ## Services
 
-### Public/Shared Service List
+### `GET /v1/services`
 
 - method: `GET`
 - path: `/v1/services`
 - auth required?: `Yes`
 - request shape:
-  No body.
+  No request body.
 
 - response shape:
 
@@ -505,15 +564,15 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  This endpoint is the minimum shared service list endpoint for user flows.
+  Shared service list endpoint used by booking flows.
 
-### Admin Service List
+### `GET /v1/services/all`
 
 - method: `GET`
 - path: `/v1/services/all`
 - auth required?: `Yes`
 - request shape:
-  Query params may include `name`, `description`, `durationMinutes`, `price`, `imageUrl`, `categoryId`, `isActive`, `displayOrder`, `page`, `limit`.
+  Query params may include `name`, `description`, `durationMinutes`, `price`, `imageUrl`, `categoryId`, `isActive`, `displayOrder`, `page`, and `limit`.
 
 - response shape:
 
@@ -541,25 +600,41 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  Admin only endpoint.
+  Admin-oriented service list endpoint with pagination and filtering support.
 
 ## Time Slots
 
-### List Time Slots
+### `GET /v1/time-slots`
 
 - method: `GET`
 - path: `/v1/time-slots`
 - auth required?: `No`
 - request shape:
-  Query params may include `slotTime`, `isActive`, `minDuration`, `maxDuration`, `page`, `limit`.
+  Query params may include `slotTime`, `isActive`, `minDuration`, `maxDuration`, `page`, and `limit`.
 
 - response shape:
-  Returns a list/paginated set of time slots from the time-slot service.
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "slotTime": "09:00:00",
+      "durationMinutes": 30,
+      "isActive": true
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 10,
+  "totalPages": 1
+}
+```
 
 - notes:
-  Used for general time-slot browsing and admin tooling.
+  General time-slot listing endpoint.
 
-### Get Available Slots For Date
+### `GET /v1/time-slots/available-slots?date=YYYY-MM-DD`
 
 - method: `GET`
 - path: `/v1/time-slots/available-slots`
@@ -599,5 +674,5 @@ Many list endpoints return `data.items`, `data.total`, `data.page`, `data.limit`
 ```
 
 - notes:
-  This is the minimum required time-slot availability endpoint for the branch.
-  `date` must be in `YYYY-MM-DD` format.
+  Primary time-slot availability endpoint for this branch.
+  `date` must be passed in `YYYY-MM-DD` format.
