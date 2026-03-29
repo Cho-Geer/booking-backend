@@ -40,7 +40,7 @@ async function bootstrap() {
   
   app.use(cookieParser());
   if (process.env.CSRF_ENABLED === 'true') {
-    app.use('/v1', csrfProtectionMiddleware);
+    app.use(process.env.API_PREFIX, csrfProtectionMiddleware);
   }
 
   // Swagger 文档配置
@@ -54,7 +54,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 3001;
+  const port = process.env.PORT;
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`API Documentation: http://localhost:${port}/api/docs`);

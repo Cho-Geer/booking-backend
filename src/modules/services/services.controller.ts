@@ -4,7 +4,7 @@ import { ServicesService } from './services.service';
 import { CurrentUser } from '../../common/decorators';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
-import { CreateServiceDto, ToggleServiceStatusDto, UpdateServiceDto, ParamIdDto, ServiceQueryDto, ServiceListResponseDto } from './dto/service.dto';
+import { CreateServiceDto, ToggleServiceStatusDto, UpdateServiceDto, ParamIdDto, ServiceQueryDto, ServiceListResponseDto, ServiceResponseDto } from './dto/service.dto';
 import { User } from '@prisma/client';
 import { UserType } from '../users/dto/user.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -24,9 +24,10 @@ export class ServicesController {
   @Get()
   @ApiOperation({ summary: '获取所有服务列表' })
   @ApiResponse({ status: 200, description: '成功获取服务列表' })
-  async findAll() {
+  async findAll(): Promise<ApiResponseDto<ServiceResponseDto[]>> {
     try {
-      return await this.servicesService.findAll();
+      const result = await this.servicesService.findAll();
+      return ApiResponseDto.success(result, '获取服务列表成功');
     } catch (error) {
       this.logger.error(`查询服務列表失败: ${error.message}`, error.stack);
       throw error;
@@ -40,9 +41,10 @@ export class ServicesController {
   @ApiResponse({ status: 200, description: '成功获取服务列表' })
   @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
   @ApiQuery({ name: 'limit', required: false, description: '每页数量', example: 10 })
-  async findAllForAdmin(@Query(ValidationPipe) query: ServiceQueryDto): Promise<ServiceListResponseDto> {
+  async findAllForAdmin(@Query(ValidationPipe) query: ServiceQueryDto): Promise<ApiResponseDto<ServiceListResponseDto>> {
     try {
-      return await this.servicesService.findAllForAdmin(query);
+      const result = await this.servicesService.findAllForAdmin(query);
+      return ApiResponseDto.success(result, '获取服务列表成功');
     } catch (error) {
       this.logger.error(`查询服務列表失败: ${error.message}`, error.stack);
       throw error;
@@ -56,11 +58,9 @@ export class ServicesController {
   @ApiResponse({ status: 201, description: '服务创建成功' })
   async createService(
     @Body(new ValidationPipe({ transform: true })) createServiceDto: CreateServiceDto,
-  ) {
+  ): Promise<ApiResponseDto<ServiceResponseDto>> {
     const service = await this.servicesService.createService(createServiceDto);
-    return {
-      data: service,
-    };
+    return ApiResponseDto.success(service, '创建服务成功');
   }
 
   @Patch('admin/:id')
@@ -71,11 +71,9 @@ export class ServicesController {
   async updateService(
     @Param() { id }: ParamIdDto,
     @Body(new ValidationPipe({ transform: true })) updateServiceDto: UpdateServiceDto,
-  ) {
+  ): Promise<ApiResponseDto<ServiceResponseDto>> {
     const service = await this.servicesService.updateService(id, updateServiceDto);
-    return {
-      data: service,
-    };
+    return ApiResponseDto.success(service, '更新服务成功');
   }
 
   @Patch('admin/:id/status')
@@ -86,7 +84,7 @@ export class ServicesController {
   async updateServiceStatus(
     @Param() { id }: ParamIdDto,
     @Body(new ValidationPipe({ transform: true })) toggleServiceStatusDto: ToggleServiceStatusDto,
-  ): Promise<ApiResponseDto> {
+  ): Promise<ApiResponseDto<ServiceResponseDto>> {
     const result = await this.servicesService.toggleServiceStatus(id, toggleServiceStatusDto);
     return ApiResponseDto.success(result);
   }
