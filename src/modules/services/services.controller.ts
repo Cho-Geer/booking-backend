@@ -9,6 +9,7 @@ import { User } from '@prisma/client';
 import { UserType } from '../users/dto/user.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
+import { ApiResponseDto } from '@/common';
 
 @ApiTags('Services')
 @Controller('services')
@@ -85,10 +86,8 @@ export class ServicesController {
   async updateServiceStatus(
     @Param() { id }: ParamIdDto,
     @Body(new ValidationPipe({ transform: true })) toggleServiceStatusDto: ToggleServiceStatusDto,
-  ) {
+  ): Promise<ApiResponseDto> {
     const result = await this.servicesService.toggleServiceStatus(id, toggleServiceStatusDto);
-    return {
-      data: result,
-    };
+    return ApiResponseDto.success(result);
   }
 }

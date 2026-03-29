@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { ServicesModule } from './modules/services/services.module';
+import { TimeSlotsModule } from './modules/time-slots/time-slots.module';
 import { EmailModule } from './modules/email/email.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { DatabaseModule } from './common/database/database.module';
@@ -23,7 +24,7 @@ import { RetentionModule } from './modules/retention/retention.module';
     // 配置模块
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      envFilePath: ['.env.development', '.env.production'],
     }),
     ScheduleModule.forRoot(),
     
@@ -59,6 +60,7 @@ import { RetentionModule } from './modules/retention/retention.module';
     UsersModule,
     BookingsModule,
     ServicesModule,
+    TimeSlotsModule,
     EmailModule,
     RetentionModule,
   ],

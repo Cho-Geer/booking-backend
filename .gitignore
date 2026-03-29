@@ -4,6 +4,9 @@
 /.env
 /docs
 /logs/*
-/.env.development
-/.env.production
 /.qoder
+/.sfdx
+/.trae
+/.trae-aicc
+/.env.production
+/.env.development

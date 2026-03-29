@@ -23,7 +23,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto, SendVerificationCodeDto, RefreshTokenDto, LoginResponseDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, SendVerificationCodeDto, RefreshTokenDto, LoginResponseDto, UserInfoResponseDto } from './dto/auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipJwtAuth } from '../../common/decorators';
@@ -172,7 +172,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取用户信息', description: '获取当前登录用户的详细信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getProfile(@CurrentUser() currentUser: any): Promise<ApiResponseDto<any>> {
+  async getProfile(@CurrentUser() currentUser: any): Promise<ApiResponseDto<UserInfoResponseDto>> {
     const user = await this.authService.getUserProfile(currentUser.id);
     return ApiResponseDto.success(user, '获取用户信息成功');
   }
