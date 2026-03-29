@@ -137,7 +137,9 @@ describe('BookingsController', () => {
       const result = await controller.create(createDto, mockUser);
 
       expect(service.createBooking).toHaveBeenCalledWith(createDto, mockUser.id);
-      expect(result).toEqual(mockAppointment);
+      expect(result.data).toEqual(mockAppointment);
+      expect(result.message).toBe('创建预约成功');
+      expect(result.code).toBe(200);
     });
 
     it('应该为没有userId的DTO设置当前用户ID', async () => {
@@ -256,7 +258,9 @@ describe('BookingsController', () => {
 
       expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
       expect(service.updateBooking).toHaveBeenCalledWith('appointment-123', updateDto, mockUser.id);
-      expect(result).toEqual(updatedBooking);
+      expect(result.data).toEqual(updatedBooking);
+      expect(result.message).toBe('更新预约成功');
+      expect(result.code).toBe(200);
     });
 
     it('应该抛出预约不存在的异常', async () => {

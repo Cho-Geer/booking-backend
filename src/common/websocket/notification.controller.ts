@@ -24,7 +24,7 @@ import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators';
 import { WebsocketService } from './websocket.service';
 import { NotificationQueryDto, NotificationCreateDto } from './dto/notification.dto';
-import { UserRole } from '@/modules/users/dto/user.dto';
+import { UserRole } from '../../modules/users/dto/user.dto';
 
 /**
  * 通知控制器类

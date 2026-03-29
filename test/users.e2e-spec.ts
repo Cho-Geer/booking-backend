@@ -15,6 +15,10 @@ describe('UsersController (e2e)', () => {
   let adminToken: string;
 
   beforeEach(async () => {
+    // 设置测试环境变量
+    process.env.JWT_SECRET = 'test-secret-key-for-e2e-tests';
+    process.env.JWT_EXPIRES_IN = '1h';
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -24,25 +28,25 @@ describe('UsersController (e2e)', () => {
 
     // 获取普通用户认证token
     await request(app.getHttpServer())
-      .post('/auth/send-code')
-      .send({ phone: '13800138000' });
+      .post('/auth/send-verification-code')
+      .send({ phoneNumber: '13800138000', type: 'login' });
 
     const loginResponse = await request(app.getHttpServer())
-      .post('/auth/verify-code')
-      .send({ phone: '13800138000', code: '123456' });
+      .post('/auth/login')
+      .send({ phoneNumber: '13800138000', verificationCode: '123456' });
 
-    authToken = loginResponse.body.token;
+    authToken = loginResponse.body.data?.accessToken;
 
     // 获取管理员认证token
     await request(app.getHttpServer())
-      .post('/auth/send-code')
-      .send({ phone: '13900139000' });
+      .post('/auth/send-verification-code')
+      .send({ phoneNumber: '13900139000', type: 'login' });
 
     const adminLoginResponse = await request(app.getHttpServer())
-      .post('/auth/verify-code')
-      .send({ phone: '13900139000', code: '123456' });
+      .post('/auth/login')
+      .send({ phoneNumber: '13900139000', verificationCode: '123456' });
 
-    adminToken = adminLoginResponse.body.token;
+    adminToken = adminLoginResponse.body.data?.accessToken;
   });
 
   afterEach(async () => {

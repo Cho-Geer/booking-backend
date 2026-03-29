@@ -14,7 +14,7 @@ import { Roles } from '../../common/decorators/index';
 import { UserRole } from '../users/dto/user.dto';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { ApiResponseDto } from '@/common';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('时间段管理')
 @ApiBearerAuth()

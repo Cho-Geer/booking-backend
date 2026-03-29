@@ -9,7 +9,7 @@ import { User } from '@prisma/client';
 import { UserType } from '../users/dto/user.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
-import { ApiResponseDto } from '@/common';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('Services')
 @Controller('services')

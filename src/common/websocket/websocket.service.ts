@@ -8,7 +8,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebsocketGateway, NotificationMessage } from './websocket.gateway';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationQueryDto, NotificationListResponseDto, NotificationCreateDto, NotificationDto, NotificationResponseDto } from '@/common/websocket/dto/notification.dto';
+import { NotificationQueryDto, NotificationListResponseDto, NotificationCreateDto, NotificationDto, NotificationResponseDto } from './dto/notification.dto';
 import { DatabaseException } from '../../common/exceptions/business.exceptions';
 
 /**
