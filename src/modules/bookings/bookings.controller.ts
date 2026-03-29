@@ -24,8 +24,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
-import { TimeSlotsService } from '../time-slots/time-slots.service';
-import { TimeSlotAvailabilityDto, TimeSlotAvailabilityResponseDto } from '../time-slots/dto/time-slot.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators';
@@ -75,14 +73,14 @@ export class BookingsController {
   async create(
     @Body() createAppointmentDto: CreateAppointmentDto,  // 移除ValidationPipe
     @CurrentUser() user: any,
-  ): Promise<ApiResponseDto> {
+  ): Promise<ApiResponseDto<AppointmentResponseDto>> {
     // 如果DTO中没有提供userId，使用当前用户ID
     if (!createAppointmentDto.userId) {
       createAppointmentDto.userId = user.id;
     }
     
     const result = await this.bookingsService.createBooking(createAppointmentDto, user.id);
-    return ApiResponseDto.success(result);
+    return ApiResponseDto.success(result, '创建预约成功');
   }
 
   /**
@@ -119,20 +117,6 @@ export class BookingsController {
       throw error;
     }
   }
-
-  /**
-   * 获取可用时间段
-   * @param query 查询参数
-   * @returns 可用时间段列表
-   */
-  // @Get('available-slots')
-  // @ApiOperation({ summary: '获取可用时间段', description: '获取指定日期的可用时间段' })
-  // @ApiResponse({ status: 200, description: '获取成功' })
-  // @ApiResponse({ status: 400, description: '参数错误' })
-  // async getAvailableSlots(@Query() query: TimeSlotAvailabilityDto): Promise<ApiResponseDto> {
-  //   const result = await this.timeSlotsService.getAvailability(query);
-  //   return ApiResponseDto.success(result);
-  // }
 
   /**
    * 获取指定日期的所有预约（无分页）
@@ -240,7 +224,7 @@ export class BookingsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateAppointmentDto: UpdateAppointmentDto,  // 移除 ValidationPipe
     @CurrentUser() user: any,
-  ): Promise<AppointmentResponseDto> {
+  ): Promise<ApiResponseDto<AppointmentResponseDto>> {
     try {
       this.logger.log(`用户 ${user.id} 更新预约 ${id}: ${JSON.stringify(updateAppointmentDto)}`);
       
@@ -261,7 +245,8 @@ export class BookingsController {
       // 记录DTO验证信息
       this.logger.log(`更新DTO验证结果: ${JSON.stringify(updateAppointmentDto)}`);
       
-      return await this.bookingsService.updateBooking(id, updateAppointmentDto, user.id);
+      const result = await this.bookingsService.updateBooking(id, updateAppointmentDto, user.id);
+      return ApiResponseDto.success(result, '更新预约成功');
     } catch (error) {
       this.logger.error(`更新预约 ${id} 失败: ${error.message}`, error.stack);
       throw error;
