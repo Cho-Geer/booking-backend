@@ -1,5 +1,6 @@
 /node_modules
 /dist
+/coverage
 
 /.env
 /docs
@@ -10,3 +11,4 @@
 /.trae-aicc
 /.env.production
 /.env.development
+/.env.instance*
