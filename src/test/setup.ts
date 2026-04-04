@@ -4,11 +4,12 @@
  * @author Booking System
  * @since 2024
  */
-
+import { existsSync } from 'fs';
 import { config } from 'dotenv';
 
+
 // 加载测试环境变量
-config({ path: require('fs').existsSync('.env.test') ? '.env.test' : '.env.test.example' });
+config({ path: existsSync('.env.test') ? '.env.test' : '.env.test.example' });
 
 // 设置测试环境变量
 process.env.NODE_ENV = 'test';
