@@ -68,7 +68,7 @@ export class UsersService {
           name: createUserDto.name,
           phone: MaskingUtil.maskPhoneNumber(createUserDto.phone),
           phoneHash: this.hashPhoneNumber(createUserDto.phone),
-          email: MaskingUtil.maskEmail(createUserDto.email) ?? undefined,
+          email: createUserDto.email ?? undefined,
           userType: createUserDto.userType || 'CUSTOMER',
           status: createUserDto.status || 'ACTIVE',
           remarks: createUserDto.remarks,
