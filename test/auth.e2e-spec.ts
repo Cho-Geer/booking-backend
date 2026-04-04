@@ -8,9 +8,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/common/prisma/prisma.service';
+import { createHash } from 'crypto';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
+  let prismaService: PrismaService;
+
+  const makePhoneHash = (phoneNumber: string) => createHash('sha256').update(phoneNumber).digest('hex');
 
   beforeAll(() => {
     // 设置测试环境变量
@@ -35,6 +40,23 @@ describe('AuthController (e2e)', () => {
     app.setGlobalPrefix('v1');
     app.useGlobalPipes(new ValidationPipe());
     await app.init();
+
+    prismaService = moduleFixture.get(PrismaService);
+    await prismaService.user.upsert({
+      where: { phone: '13800138000' },
+      update: {
+        status: 'ACTIVE',
+        isVerified: true,
+      },
+      create: {
+        name: 'Auth Test User',
+        phone: '13800138000',
+        phoneHash: makePhoneHash('13800138000'),
+        userType: 'CUSTOMER',
+        status: 'ACTIVE',
+        isVerified: true,
+      },
+    });
   });
 
   afterEach(async () => {

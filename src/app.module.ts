@@ -13,6 +13,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { DatabaseModule } from './common/database/database.module';
 import { FileUploadModule } from './common/file-upload/file-upload.module';
 import { WebsocketModule } from './common/websocket/websocket.module';
+import { HealthModule } from './common/health/health.module';
 import { RetentionModule } from './modules/retention/retention.module';
 
 /**
@@ -51,6 +52,7 @@ import { RetentionModule } from './modules/retention/retention.module';
     
     // 文件上传模块
     FileUploadModule,
+    HealthModule,
     
     // WebSocket模块（实时通知）
     WebsocketModule,

@@ -8,7 +8,7 @@
 import { config } from 'dotenv';
 
 // 加载测试环境变量
-config({ path: '.env.test' });
+config({ path: require('fs').existsSync('.env.test') ? '.env.test' : '.env.test.example' });
 
 // 设置测试环境变量
 process.env.NODE_ENV = 'test';

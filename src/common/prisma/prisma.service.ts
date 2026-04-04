@@ -7,6 +7,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { DatabaseConfigService } from '../database/database-config.service';
+import { writeStructuredLog } from '../logging/structured-log.util';
 
 /**
  * Prisma服务类
@@ -32,7 +33,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       // 建立数据库连接
       await this.$connect();
-      console.log('✅ 数据库连接成功');
+      writeStructuredLog('log', 'database_connected', PrismaService.name, {
+        databaseUrlConfigured: Boolean(process.env.DATABASE_URL),
+      });
       
       // 配置连接池参数（PostgreSQL优化）
       if (process.env.NODE_ENV === 'production') {
@@ -41,15 +44,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         await this.$queryRaw`SET lock_timeout = '10s'`;
         await this.$queryRaw`SET idle_in_transaction_session_timeout = '5s'`;
         
-        console.log('🔧 生产环境数据库配置已应用');
+        writeStructuredLog('log', 'database_prod_config_applied', PrismaService.name);
       }
       
       // 设置查询超时
       await this.$queryRaw`SET statement_timeout = '30000ms'`;
       
-      console.log('🔧 数据库连接池配置完成');
+      writeStructuredLog('log', 'database_pool_configured', PrismaService.name, {
+        nodeEnv: process.env.NODE_ENV ?? 'development',
+      });
     } catch (error) {
-      console.error('❌ 数据库连接失败:', error);
+      writeStructuredLog('error', 'database_connection_failed', PrismaService.name, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -61,9 +68,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleDestroy() {
     try {
       await this.$disconnect();
-      console.log('✅ 数据库连接已断开');
+      writeStructuredLog('log', 'database_disconnected', PrismaService.name);
     } catch (error) {
-      console.error('❌ 数据库断开连接失败:', error);
+      writeStructuredLog('error', 'database_disconnect_failed', PrismaService.name, {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -77,7 +86,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$queryRaw`SELECT 1`;
       return true;
     } catch (error) {
-      console.error('数据库健康检查失败:', error);
+      writeStructuredLog('error', 'database_health_check_failed', PrismaService.name, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }

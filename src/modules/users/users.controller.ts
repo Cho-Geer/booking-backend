@@ -100,6 +100,43 @@ export class UsersController {
   }
 
   /**
+   * 获取当前用户信息
+   * @param currentUser 当前登录用户
+   * @returns 当前用户信息
+   */
+  @Get('profile/me')
+  @ApiOperation({ summary: '获取当前用户信息' })
+  @ApiResponse({
+    status: 200,
+    description: '获取当前用户信息成功',
+    type: UserResponseDto,
+  })
+  async getCurrentUserProfile(
+    @CurrentUser() currentUser: any,
+  ): Promise<ApiResponseDto<UserResponseDto>> {
+    const user = await this.usersService.findUserById(currentUser.id);
+    return ApiResponseDto.success(user, '获取当前用户信息成功');
+  }
+
+  /**
+   * 获取用户统计信息
+   * @param currentUser 当前登录用户
+   * @returns 用户统计信息
+   */
+  @Get('statistics')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Permissions('users.stats')
+  @ApiOperation({ summary: '获取用户统计信息' })
+  @ApiResponse({
+    status: 200,
+    description: '获取用户统计信息成功',
+  })
+  async getStatistics(): Promise<ApiResponseDto<any>> {
+    const statistics = await this.usersService.getUserStats();
+    return ApiResponseDto.success(statistics, '获取统计信息成功');
+  }
+
+  /**
    * 获取用户详情
    * @param id 用户ID
    * @returns 用户详情
@@ -189,42 +226,5 @@ export class UsersController {
   ): Promise<ApiResponseDto<void>> {
     await this.usersService.deleteUser(id);
     return ApiResponseDto.success(null, '用户删除成功');
-  }
-
-  /**
-   * 获取当前用户信息
-   * @param currentUser 当前登录用户
-   * @returns 当前用户信息
-   */
-  @Get('profile/me')
-  @ApiOperation({ summary: '获取当前用户信息' })
-  @ApiResponse({
-    status: 200,
-    description: '获取当前用户信息成功',
-    type: UserResponseDto,
-  })
-  async getCurrentUserProfile(
-    @CurrentUser() currentUser: any,
-  ): Promise<ApiResponseDto<UserResponseDto>> {
-    const user = await this.usersService.findUserById(currentUser.id);
-    return ApiResponseDto.success(user, '获取当前用户信息成功');
-  }
-
-  /**
-   * 获取用户统计信息
-   * @param currentUser 当前登录用户
-   * @returns 用户统计信息
-   */
-  @Get('statistics')
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Permissions('users.stats')
-  @ApiOperation({ summary: '获取用户统计信息' })
-  @ApiResponse({
-    status: 200,
-    description: '获取用户统计信息成功',
-  })
-  async getStatistics(): Promise<ApiResponseDto<any>> {
-    const statistics = await this.usersService.getUserStats();
-    return ApiResponseDto.success(statistics, '获取统计信息成功');
   }
 }

@@ -12,4 +12,6 @@
 /.trae-aicc
 /.env.production
 /.env.development
+/.env.test
 /.env.instance*
+/uploads

@@ -19,10 +19,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: any) {
     // 返回用户对象，request.user 将包含这些字段
-    return { 
-      sub: payload.sub,  // 用户ID
+    const role = payload.role ?? payload.userType;
+    const userType = payload.userType ?? role;
+    return {
+      id: payload.sub,
+      sub: payload.sub,
       phoneHash: payload.phoneHash,
-      userType: payload.userType 
+      userType,
+      role,
+      permissions: payload.permissions,
     };
   }
 }

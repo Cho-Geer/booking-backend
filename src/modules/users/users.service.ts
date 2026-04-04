@@ -71,6 +71,7 @@ export class UsersService {
           email: MaskingUtil.maskEmail(createUserDto.email) ?? undefined,
           userType: createUserDto.userType || 'CUSTOMER',
           status: createUserDto.status || 'ACTIVE',
+          remarks: createUserDto.remarks,
         },
       });
 

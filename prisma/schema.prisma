@@ -60,6 +60,7 @@ model User {
   phoneHash         String         @unique @map("phone_hash") @db.VarChar(64)
   email             String?        @unique @db.VarChar(255)
   wechat            String?        @db.VarChar(100)
+  remarks           String?        @db.Text
   isVerified        Boolean        @default(false) @map("is_verified")
   userType          UserType       @default(CUSTOMER) @map("user_type")
   status            UserStatus     @default(ACTIVE)

@@ -4,10 +4,33 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import { csrfProtectionMiddleware } from './common/middleware/csrf.middleware';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { writeStructuredLog } from './common/logging/structured-log.util';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('v1');
+  app.use((req, res, next) => {
+    const request = req as typeof req & { startTime?: number; requestId?: string };
+    request.startTime = Date.now();
+    request.requestId =
+      (req.headers['x-request-id'] as string | undefined) ??
+      `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+    res.setHeader('X-Request-Id', request.requestId);
+    res.on('finish', () => {
+      writeStructuredLog('log', 'http_request', 'HTTP', {
+        requestId: request.requestId,
+        method: req.method,
+        path: req.originalUrl ?? req.url,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - (request.startTime ?? Date.now()),
+        ip: req.ip,
+      });
+    });
+    next();
+  });
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // 全局验证管道
   app.useGlobalPipes(
@@ -56,9 +79,12 @@ async function bootstrap() {
 
   const port = process.env.PORT;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`API Documentation: http://localhost:${port}/api/docs`);
-  console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
+  writeStructuredLog('log', 'application_started', 'Bootstrap', {
+    port,
+    apiDocsUrl: `http://localhost:${port}/api/docs`,
+    healthUrl: `http://localhost:${port}/v1/health`,
+    allowedOrigins,
+  });
 }
 
 /**

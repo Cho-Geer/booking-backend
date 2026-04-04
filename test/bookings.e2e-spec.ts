@@ -12,7 +12,6 @@ import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserStatus, AppointmentStatus } from '@prisma/client';
 import { UserType } from '../src/modules/users/dto/user.dto';
-import { AppointmentStatusEnum } from '../src/modules/bookings/dto/booking.dto';
 
 describe('BookingsController (e2e)', () => {
   let app: INestApplication;
@@ -27,8 +26,9 @@ describe('BookingsController (e2e)', () => {
 
   beforeAll(async () => {
     // 设置测试环境变量
-    process.env.JWT_SECRET = 'test-secret-key-for-e2e-tests';
-    process.env.JWT_EXPIRES_IN = '1h';
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key-for-e2e-tests';
+    process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-key-for-e2e-tests';
+    process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
     process.env.CSRF_ENABLED = 'false';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -64,18 +64,24 @@ describe('BookingsController (e2e)', () => {
     });
 
     // 生成JWT令牌
-    adminToken = jwtService.sign({
-      sub: adminUser.id,
-      phone: adminUser.phone,
-      userType: adminUser.userType,
-      role: [adminUser.userType],
-    });
-
     userToken = jwtService.sign({
       sub: normalUser.id,
       phone: normalUser.phone,
-      userType: normalUser.userType,
-      role: [normalUser.userType],
+      userType: 'CUSTOMER',
+      role: 'CUSTOMER',
+    }, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: '1h',
+    });
+
+    adminToken = jwtService.sign({
+      sub: adminUser.id,
+      phone: adminUser.phone,
+      userType: 'ADMIN',
+      role: 'ADMIN',
+    }, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: '1h',
     });
 
     // 创建测试时间段
@@ -115,7 +121,7 @@ describe('BookingsController (e2e)', () => {
         .send(createBookingDto)
         .expect(201);
 
-      expect(response.body.code).toBe(201);
+      expect(response.body.code).toBe(200);
       expect(response.body.data).toBeDefined();
       expect(response.body.data.timeSlotId).toBe(testTimeSlotId);
       expect(response.body.data.status).toBe(AppointmentStatus.PENDING);
@@ -140,7 +146,7 @@ describe('BookingsController (e2e)', () => {
 
     it('应该返回时间段不存在的错误', async () => {
       const createBookingDto = {
-        timeSlotId: 'non-existent-timeslot',
+        timeSlotId: '00000000-0000-0000-0000-000000000000',
         userId: normalUser.id,
         appointmentDate: '2024-01-15',
         customerName: '测试用户',
@@ -153,7 +159,7 @@ describe('BookingsController (e2e)', () => {
         .send(createBookingDto)
         .expect(404);
 
-      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe(404);
     });
 
     it('应该返回时间段冲突的错误', async () => {
@@ -165,20 +171,18 @@ describe('BookingsController (e2e)', () => {
         customerPhone: '13700137000',
       };
 
-      const response = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/v1/bookings')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(createBookingDto)
-        .expect(201);
-
-      testBookingId = response.body.data.id;
+        .expect(409);
     });
   });
 
   describe('/v1/bookings (GET)', () => {
     it('应该成功获取预约列表', async () => {
       const response = await request(app.getHttpServer())
-        .get('/v1/bookings')
+        .get('/v1/bookings/all')
         .set('Authorization', `Bearer ${adminToken}`)
         .query({ page: 1, limit: 10 })
         .expect(200);
@@ -191,7 +195,7 @@ describe('BookingsController (e2e)', () => {
 
     it('应该根据用户ID过滤预约', async () => {
       const response = await request(app.getHttpServer())
-        .get('/v1/bookings')
+        .get('/v1/bookings/all')
         .set('Authorization', `Bearer ${adminToken}`)
         .query({ userId: normalUser.id, page: 1, limit: 10 })
         .expect(200);
@@ -202,7 +206,7 @@ describe('BookingsController (e2e)', () => {
 
     it('应该根据状态过滤预约', async () => {
       const response = await request(app.getHttpServer())
-        .get('/v1/bookings')
+        .get('/v1/bookings/all')
         .set('Authorization', `Bearer ${adminToken}`)
         .query({ status: AppointmentStatus.PENDING, page: 1, limit: 10 })
         .expect(200);
@@ -215,7 +219,7 @@ describe('BookingsController (e2e)', () => {
   describe('/v1/bookings/:id (GET)', () => {
     it('应该成功获取预约详情', async () => {
       const response = await request(app.getHttpServer())
-        .get(`/bookings/${testBookingId}`)
+        .get(`/v1/bookings/${testBookingId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -226,11 +230,11 @@ describe('BookingsController (e2e)', () => {
 
     it('应该返回预约不存在的错误', async () => {
       const response = await request(app.getHttpServer())
-        .get('/v1/bookings/non-existent-booking')
+        .get('/v1/bookings/00000000-0000-0000-0000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
-        .expect(400);
+        .expect(404);
 
-      // expect(response.body.code).toBe(404);
+      expect(response.body.code).toBe(404);
     });
   });
 
@@ -258,12 +262,12 @@ describe('BookingsController (e2e)', () => {
       }
 
       const updateBookingDto = {
-        status: AppointmentStatusEnum.CONFIRMED,
+        status: 'CONFIRMED',
         notes: '已确认预约',
       };
 
       const response = await request(app.getHttpServer())
-        .patch(`/bookings/${testBookingId}`)
+        .patch(`/v1/bookings/${testBookingId}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send(updateBookingDto)
         .expect(200);
@@ -275,18 +279,18 @@ describe('BookingsController (e2e)', () => {
 
     it('应该返回预约不存在的错误', async () => {
       const updateBookingDto = {
-        status: AppointmentStatusEnum.CONFIRMED,
+        status: 'CONFIRMED',
       };
 
       await request(app.getHttpServer())
-        .patch('/v1/bookings/non-existent-booking')
+        .patch('/v1/bookings/00000000-0000-0000-0000-000000000000')
         .set('Authorization', `Bearer ${adminToken}`)
         .send(updateBookingDto)
-        .expect(400);
+        .expect(404);
     });
   });
 
-  describe('/v1/bookings/:id/cancel (POST)', () => {
+  describe('/v1/bookings/:id/cancel (PATCH)', () => {
     it('应该成功取消预约（管理员）', async () => {
       // 确保testBookingId已经设置
       if (!testBookingId) {
@@ -308,7 +312,7 @@ describe('BookingsController (e2e)', () => {
       }
 
       const response = await request(app.getHttpServer())
-        .post(`/bookings/${testBookingId}/cancel`)
+        .patch(`/v1/bookings/${testBookingId}/cancel`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -335,7 +339,7 @@ describe('BookingsController (e2e)', () => {
 
       // 用户取消自己的预约
       const cancelResponse = await request(app.getHttpServer())
-        .post(`/bookings/${bookingId}/cancel`)
+        .patch(`/v1/bookings/${bookingId}/cancel`)
         .set('Authorization', `Bearer ${userToken}`)
         .expect(200);
 
@@ -345,7 +349,7 @@ describe('BookingsController (e2e)', () => {
 
     it('应该返回预约不存在的错误', async () => {
       const response = await request(app.getHttpServer())
-        .post('/v1/bookings/non-existent-booking/cancel')
+        .patch('/v1/bookings/00000000-0000-0000-0000-000000000000/cancel')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
@@ -356,9 +360,9 @@ describe('BookingsController (e2e)', () => {
   describe('/v1/bookings (GET)', () => {
     it('应该成功获取我的预约列表', async () => {
       const response = await request(app.getHttpServer())
-        .get('/v1/bookings')
+        .get('/v1/bookings/all')
         .set('Authorization', `Bearer ${userToken}`)
-        .query({ page: '1', limit: '10' })  // 将数字转换为字符串
+        .query({ page: 1, limit: 10 })
         .expect(200);
 
       expect(response.body.code).toBe(200);
@@ -368,8 +372,8 @@ describe('BookingsController (e2e)', () => {
 
     it('应该返回401未认证错误', async () => {
       await request(app.getHttpServer())
-        .get('/v1/bookings')
-        .query({ page: '1', limit: '10' })  // 将数字转换为字符串
+        .get('/v1/bookings/all')
+        .query({ page: 1, limit: 10 })
         .expect(401);
     });
   });

@@ -31,6 +31,7 @@ describe('Services Admin API (E2E)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('v1');
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -70,7 +71,7 @@ describe('Services Admin API (E2E)', () => {
     const token = createAdminToken(admin.id);
 
     const createResponse = await request(app.getHttpServer())
-      .post('/services/admin')
+      .post('/v1/services/admin')
       .set('Authorization', `Bearer ${token}`)
       .send({
         name: '高级咨询服务',
@@ -91,7 +92,7 @@ describe('Services Admin API (E2E)', () => {
     expect(serviceId).toBeDefined();
 
     const updateResponse = await request(app.getHttpServer())
-      .patch(`/services/admin/${serviceId}`)
+      .patch(`/v1/services/admin/${serviceId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         name: '高级咨询服务-升级版',
@@ -103,7 +104,7 @@ describe('Services Admin API (E2E)', () => {
     expect(updateResponse.body?.data?.price).toBe(299);
 
     const toggleResponse = await request(app.getHttpServer())
-      .patch(`/services/admin/${serviceId}/status`)
+      .patch(`/v1/services/admin/${serviceId}/status`)
       .set('Authorization', `Bearer ${token}`)
       .send({
         isActive: false,
@@ -113,11 +114,11 @@ describe('Services Admin API (E2E)', () => {
     expect(toggleResponse.body?.data?.isActive).toBe(false);
 
     const listResponse = await request(app.getHttpServer())
-      .get('/services/admin/all')
+      .get('/v1/services/all')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(Array.isArray(listResponse.body?.data)).toBe(true);
-    expect(listResponse.body.data.some((item: { id: string }) => item.id === serviceId)).toBe(true);
+    expect(Array.isArray(listResponse.body?.data?.items)).toBe(true);
+    expect(listResponse.body.data.items.some((item: { id: string }) => item.id === serviceId)).toBe(true);
   });
 });

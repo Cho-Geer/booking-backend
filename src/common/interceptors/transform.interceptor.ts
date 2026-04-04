@@ -15,6 +15,7 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { ApiResponseDto } from '../dto/api-response.dto';
+import { writeStructuredLog } from '../logging/structured-log.util';
 
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponseDto<T>> {
@@ -25,7 +26,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponseDt
     const response = context.switchToHttp().getResponse();
     
     // 获取请求开始时间，用于计算处理时间
-    const startTime = Date.now();
+    const startTime = request.startTime ?? Date.now();
     
     return next.handle().pipe(
       map((data) => {
@@ -35,19 +36,29 @@ export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponseDt
         if (data && typeof data === 'object' && ('code' in data) && ('message' in data)) {
           // 添加处理时间信息到响应头
           response.setHeader('X-Response-Time', `${processingTime}ms`);
+          response.setHeader('X-Request-Id', request.requestId ?? 'unknown');
           return data;
         }
 
         // 创建统一响应格式
         const responseData = ApiResponseDto.success(data);
+        responseData.requestId = request.requestId ?? responseData.requestId;
         
         // 添加处理时间信息到响应头
         response.setHeader('X-Response-Time', `${processingTime}ms`);
+        response.setHeader('X-Request-Id', responseData.requestId);
         
         // 记录响应日志
         this.logger.log(
           `${request.method} ${request.url} - ${response.statusCode} - ${processingTime}ms`
         );
+        writeStructuredLog('log', 'http_response', TransformInterceptor.name, {
+          requestId: responseData.requestId,
+          method: request.method,
+          path: request.url,
+          statusCode: response.statusCode,
+          durationMs: processingTime,
+        });
         
         return responseData;
       })
