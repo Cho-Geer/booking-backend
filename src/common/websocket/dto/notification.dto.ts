@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import { IsOptional, IsUUID, IsEnum, IsBoolean, IsNumber, Min, Max } from 'class-validator';
 
 /**
@@ -76,10 +77,28 @@ export class NotificationQueryDto {
   
   @ApiProperty({ description: '是否已读', required: false })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+
+    return value;
+  })
   @IsBoolean({ message: 'isRead必须是布尔值' })
   isRead?: boolean;
   
   @ApiProperty({ description: '每页数量', default: 10, required: false })
+  @Type(() => Number)
   @IsOptional()
   @IsNumber({}, { message: 'limit必须是数字' })
   @Min(1, { message: 'limit不能小于1' })
@@ -87,12 +106,14 @@ export class NotificationQueryDto {
   limit?: number;
   
   @ApiProperty({ description: '偏移量', required: false })
+  @Type(() => Number)
   @IsOptional()
   @IsNumber({}, { message: 'offset必须是数字' })
   @Min(0, { message: 'offset不能小于0' })
   offset?: number;
   
   @ApiProperty({ description: '当前页码', default: 1, required: false })
+  @Type(() => Number)
   @IsOptional()
   @IsNumber({}, { message: 'page必须是数字' })
   @Min(1, { message: 'page不能小于1' })

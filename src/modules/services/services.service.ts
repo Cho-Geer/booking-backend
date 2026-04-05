@@ -59,7 +59,7 @@ export class ServicesService {
         where.durationMinutes = query.durationMinutes;
       }
 
-      if (query.isActive) {
+      if (query.isActive !== undefined) {
         where.isActive = query.isActive;
       }
 

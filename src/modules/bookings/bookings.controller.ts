@@ -188,7 +188,7 @@ export class BookingsController {
   ): Promise<AppointmentResponseDto> {
     this.logger.log(`用户 ${user.id} 查询预约详情: ${id}`);
     
-    const booking = await this.bookingsService.findBookingById(id);
+    const booking = await this.bookingsService.findBookingById(id, user.id);
     
     // 检查预约是否存在
     if (!booking) {
@@ -229,7 +229,7 @@ export class BookingsController {
       this.logger.log(`用户 ${user.id} 更新预约 ${id}: ${JSON.stringify(updateAppointmentDto)}`);
       
       // 检查权限
-      const existingBooking = await this.bookingsService.findBookingById(id);
+      const existingBooking = await this.bookingsService.findBookingById(id, user.id);
       // 检查预约是否存在
       if (!existingBooking) {
         throw new ResourceNotFoundException('预约');
@@ -271,7 +271,7 @@ export class BookingsController {
     this.logger.log(`用户 ${user.id} 取消预约: ${id}`);
     
     // 检查权限
-    const existingBooking = await this.bookingsService.findBookingById(id);
+    const existingBooking = await this.bookingsService.findBookingById(id, user.id);
     // 检查预约是否存在
     if (!existingBooking) {
       throw new ResourceNotFoundException('预约');
@@ -281,7 +281,7 @@ export class BookingsController {
       throw new ResourceNotFoundException('预约');
     }
     
-    await this.bookingsService.cancelBooking(id, user.id);
+    await this.bookingsService.cancelBooking(id, user.id, undefined, user.id);
   }
 
   /**
@@ -309,12 +309,12 @@ export class BookingsController {
     
     try {
       // 检查权限
-      const existingBooking = await this.bookingsService.findBookingById(id);
+      const existingBooking = await this.bookingsService.findBookingById(id, user.id);
       if (user.userType !== UserType.ADMIN && existingBooking.userId !== user.id) {
         throw new ResourceNotFoundException('预约');
       }
       
-      await this.bookingsService.cancelBooking(id, user.id, user.userType);
+      await this.bookingsService.cancelBooking(id, user.id, user.userType, user.id);
       return ApiResponseDto.success(null, '预约取消成功');
     } catch (error) {
       if (error instanceof ResourceNotFoundException) {

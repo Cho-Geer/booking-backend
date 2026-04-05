@@ -77,7 +77,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: 'Bearer',
-        expiresIn: Number(this.configService.get('JWT_EXPIRES_IN') || 3600), // 1小时
+        expiresIn: this.getAccessTokenExpiresInSeconds(), // 1小时
         user: {
           id: user.id,
           name: user.name,
@@ -139,7 +139,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: 'Bearer',
-        expiresIn: Number(this.configService.get('JWT_EXPIRES_IN') || 3600),
+        expiresIn: this.getAccessTokenExpiresInSeconds(),
         user: {
           id: user.id,
           name: user.name,
@@ -195,7 +195,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         tokenType: 'Bearer',
-        expiresIn: Number(this.configService.get('JWT_EXPIRES_IN') || 3600),
+        expiresIn: this.getAccessTokenExpiresInSeconds(),
         user: {
           id: user.id,
           name: user.name,
@@ -447,6 +447,47 @@ export class AuthService {
    * @param phoneNumber 手机号
    * @returns 是否有效
    */
+  private getAccessTokenExpiresInSeconds(): number {
+    return this.resolveExpiresInSeconds(this.configService.get<string | number>('JWT_EXPIRES_IN'), 3600);
+  }
+
+  private resolveExpiresInSeconds(value: string | number | undefined, fallbackSeconds: number): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value !== 'string') {
+      return fallbackSeconds;
+    }
+
+    const normalized = value.trim().toLowerCase();
+
+    if (!normalized) {
+      return fallbackSeconds;
+    }
+
+    const numericValue = Number(normalized);
+    if (!Number.isNaN(numericValue)) {
+      return numericValue;
+    }
+
+    const match = normalized.match(/^(\d+)(s|m|h|d|w)$/);
+    if (!match) {
+      return fallbackSeconds;
+    }
+
+    const amount = Number(match[1]);
+    const unitToSeconds: Record<string, number> = {
+      s: 1,
+      m: 60,
+      h: 3600,
+      d: 86400,
+      w: 604800,
+    };
+
+    return amount * unitToSeconds[match[2]];
+  }
+
   private isValidPhoneNumber(phoneNumber: string): boolean {
     // 简单的中国大陆手机号正则
     return /^1[3-9]\d{9}$/.test(phoneNumber);

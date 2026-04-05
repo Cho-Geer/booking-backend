@@ -516,7 +516,7 @@ export class BookingsService {
    */
   async findUserBookings(userId: string, query: Omit<AppointmentQueryDto, 'userId'>): Promise<AppointmentListResponseDto> {
     try {
-      return this.findBookings({ ...query, userId });
+      return this.findBookings({ ...query, userId }, userId);
     } catch (error) {
       this.logger.error('查询用户预约列表失败', error);
       throw new DatabaseException('查询用户预约列表失败');

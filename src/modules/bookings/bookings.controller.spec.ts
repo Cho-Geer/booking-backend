@@ -218,7 +218,7 @@ describe('BookingsController', () => {
 
       const result = await controller.findOne('appointment-123', mockUser);
 
-      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
+      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
       expect(result).toEqual(mockBookingWithUser);
     });
 
@@ -256,7 +256,7 @@ describe('BookingsController', () => {
 
       const result = await controller.update('appointment-123', updateDto, mockUser);
 
-      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
+      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
       expect(service.updateBooking).toHaveBeenCalledWith('appointment-123', updateDto, mockUser.id);
       expect(result.data).toEqual(updatedBooking);
       expect(result.message).toBe('更新预约成功');
@@ -289,8 +289,8 @@ describe('BookingsController', () => {
 
       await controller.remove('appointment-123', mockUser);
 
-      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
-      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockUser.id);
+      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
+      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockUser.id, undefined, mockUser.id);
     });
 
     it('应该抛出预约不存在的异常', async () => {

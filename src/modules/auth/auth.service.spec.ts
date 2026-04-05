@@ -44,22 +44,28 @@ const mockCacheManager = {
   del: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockConfig: Record<string, any> = {
+  JWT_SECRET: 'test-secret',
+  JWT_REFRESH_SECRET: 'test-refresh-secret',
+  JWT_EXPIRES_IN: 3600,
+  JWT_REFRESH_EXPIRES_IN: 604800,
+};
+
 const mockConfigService = {
-  get: jest.fn().mockImplementation((key: string) => {
-    const config: Record<string, any> = {
-      JWT_SECRET: 'test-secret',
-      JWT_REFRESH_SECRET: 'test-refresh-secret',
-      JWT_EXPIRES_IN: 3600,
-      JWT_REFRESH_EXPIRES_IN: 604800,
-    };
-    return config[key];
-  }),
+  get: jest.fn().mockImplementation((key: string) => mockConfig[key]),
 };
 
 describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(async () => {
+    Object.assign(mockConfig, {
+      JWT_SECRET: 'test-secret',
+      JWT_REFRESH_SECRET: 'test-refresh-secret',
+      JWT_EXPIRES_IN: 3600,
+      JWT_REFRESH_EXPIRES_IN: 604800,
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -122,6 +128,24 @@ describe('AuthService', () => {
       mockUsersService.findUserByPhoneNumber.mockResolvedValue(mockUser);
 
       await expect(service.login(loginDto)).rejects.toThrow(AuthenticationException);
+    });
+
+    it('JWT_EXPIRES_IN 为时长字符串时也应返回秒数', async () => {
+      const mockUser = {
+        id: 'user-id',
+        name: '测试用户',
+        phone: '138****8000',
+        userType: UserType.CUSTOMER,
+        status: UserStatus.ACTIVE,
+      };
+
+      mockConfig.JWT_EXPIRES_IN = '1h';
+      mockCacheManager.get.mockResolvedValue('123456');
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(mockUser);
+
+      const result = await service.login(loginDto);
+
+      expect(result.expiresIn).toBe(3600);
     });
   });
 
@@ -196,6 +220,26 @@ describe('AuthService', () => {
 
       expect(result.message).toBe('验证码发送成功');
       expect(mockCacheManager.set).toHaveBeenCalled();
+    });
+  });
+
+  describe('refreshToken', () => {
+    it('JWT_EXPIRES_IN 为数字字符串时应返回对应秒数', async () => {
+      const mockUser = {
+        id: 'user-id',
+        name: '测试用户',
+        phone: '138****8000',
+        userType: UserType.CUSTOMER,
+        status: UserStatus.ACTIVE,
+      };
+
+      mockConfig.JWT_EXPIRES_IN = '900';
+      mockCacheManager.get.mockResolvedValue(undefined);
+      mockUsersService.findUserById.mockResolvedValue(mockUser);
+
+      const result = await service.refreshToken({ refreshToken: 'valid-refresh-token' });
+
+      expect(result.expiresIn).toBe(900);
     });
   });
 

@@ -7,6 +7,7 @@
 
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { resolveJwtExpiresIn } from '../../common/utils/jwt-expires.util';
 import { BookingsService } from './bookings.service';
 import { TimeSlotsService } from '../time-slots/time-slots.service';
 import { BookingsController } from './bookings.controller';
@@ -24,7 +25,7 @@ import { ConfigService } from '@nestjs/config';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET'),
         signOptions: {
-          expiresIn: Number(configService.get('JWT_EXPIRES_IN') || 3600),
+          expiresIn: resolveJwtExpiresIn(configService.get('JWT_EXPIRES_IN')),
         },
       }),
       inject: [ConfigService],

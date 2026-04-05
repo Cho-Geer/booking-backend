@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType, OmitType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, IsUrl } from 'class-validator';
 
 export class ParamIdDto {
@@ -47,6 +47,23 @@ export class CreateServiceDto {
 
   @ApiPropertyOptional({ description: '是否启用', default: true })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+
+    return value;
+  })
   @IsBoolean()
   isActive?: boolean;
 
@@ -97,6 +114,23 @@ export class ServiceQueryDto {
 
   @ApiPropertyOptional({ description: '是否启用', default: true })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+
+    return value;
+  })
   @IsBoolean()
   isActive?: boolean;
 
@@ -107,11 +141,13 @@ export class ServiceQueryDto {
   displayOrder?: number;
 
   @ApiProperty({ description: '页码', required: false, default: 1, minimum: 1 })
+  @Type(() => Number)
   @IsOptional()
   @IsNumber()
   page?: number = 1;
 
   @ApiProperty({ description: '每页数量', required: false, default: 10, minimum: 1, maximum: 100 })
+  @Type(() => Number)
   @IsOptional()
   @IsNumber()
   limit?: number = 10;

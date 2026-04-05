@@ -1,6 +1,5 @@
 
 import { Module } from '@nestjs/common';
-import { CacheModule } from '@nestjs/cache-manager';
 import { JwtModule } from '@nestjs/jwt';
 import { ServicesController } from './services.controller';
 import { ServicesService } from './services.service';
@@ -9,7 +8,7 @@ import { EmailModule } from '../email/email.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
-  imports: [PrismaModule, CacheModule.register(), JwtModule.registerAsync({
+  imports: [PrismaModule, JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET'),

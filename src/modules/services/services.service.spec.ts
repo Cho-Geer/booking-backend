@@ -99,6 +99,26 @@ describe('ServicesService', () => {
 
       expect(result.items).toHaveLength(1);
     });
+
+    it('isActive=false 时也应带上过滤条件', async () => {
+      mockPrismaService.service.count.mockResolvedValue(0);
+      mockPrismaService.service.findMany.mockResolvedValue([]);
+
+      const query: ServiceQueryDto = { isActive: false, page: 1, limit: 10 };
+
+      await service.findAllForAdmin(query);
+
+      expect(mockPrismaService.service.count).toHaveBeenCalledWith({
+        where: { isActive: false },
+      });
+      expect(mockPrismaService.service.findMany).toHaveBeenCalledWith({
+        where: { isActive: false },
+        orderBy: { displayOrder: 'asc' },
+        include: { category: true },
+        skip: 0,
+        take: 10,
+      });
+    });
   });
 
   describe('createService', () => {

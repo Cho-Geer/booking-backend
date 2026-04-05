@@ -9,6 +9,7 @@ import { Module } from '@nestjs/common';
 import { MulterModule } from '@nestjs/platform-express';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { resolveJwtExpiresIn } from '../utils/jwt-expires.util';
 import { FileUploadService } from './file-upload.service';
 import { FileUploadController } from './file-upload.controller';
 import { diskStorage } from 'multer';
@@ -22,7 +23,7 @@ import * as path from 'path';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get('JWT_SECRET'),
         signOptions: {
-          expiresIn: Number(configService.get('JWT_EXPIRES_IN') || 3600),
+          expiresIn: resolveJwtExpiresIn(configService.get('JWT_EXPIRES_IN')),
         },
       }),
       inject: [ConfigService],
