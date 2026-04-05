@@ -25,7 +25,7 @@ import { RetentionModule } from './modules/retention/retention.module';
     // 配置模块
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.development', '.env.production'],
+      envFilePath: ['.env.development', '.env.production', '.env'],
     }),
     ScheduleModule.forRoot(),
     

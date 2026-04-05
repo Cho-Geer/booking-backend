@@ -27,6 +27,8 @@ import { MaskingUtil } from '../../common/utils/masking.util';
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+  private static readonly USER_SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'name', 'email', 'userType', 'status']);
+
 
   constructor(
     private prisma: PrismaService,
@@ -460,7 +462,8 @@ export class UsersService {
       const users = await this.prisma.user.findMany({
         where,
         skip: (pagination.page - 1) * pagination.limit,
-        take: pagination.limit
+        take: pagination.limit,
+        orderBy: this.buildUserOrderBy(query),
       });
 
       return {
@@ -473,6 +476,22 @@ export class UsersService {
       this.logger.error(`查询用户列表失败: ${error.message}`, error.stack);
       throw new DatabaseException('查询用户列表失败');
     }
+  }
+
+  private buildUserOrderBy(query: QueryUserDto): Prisma.UserOrderByWithRelationInput[] {
+    const requestedSortBy = query.sortBy || '';
+    const isAllowedSortField = UsersService.USER_SORT_FIELDS.has(requestedSortBy);
+
+    if (!isAllowedSortField) {
+      return [{ createdAt: 'desc' }, { id: 'desc' }];
+    }
+
+    const direction: Prisma.SortOrder = query.order === 'asc' ? 'asc' : 'desc';
+
+    return [
+      { [requestedSortBy]: direction } as Prisma.UserOrderByWithRelationInput,
+      { id: direction },
+    ];
   }
 
   /**

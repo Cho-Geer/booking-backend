@@ -31,6 +31,7 @@ import { CurrentUser } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { Response, Request } from 'express';
 import { randomBytes } from 'crypto';
+import { extractAccessToken, extractRefreshToken } from '../../common/utils/request-token.util';
 
 /**
  * 认证控制器类
@@ -151,9 +152,8 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ApiResponseDto<void>> {
-    // 从Cookie获取refresh_token和access_token
-    const refreshToken = request.cookies?.['refresh_token'];
-    const accessToken = request.cookies?.['access_token'];
+    const refreshToken = extractRefreshToken(request);
+    const accessToken = extractAccessToken(request);
     await this.authService.logout(currentUser.id, refreshToken, accessToken);
     // 清除Cookie
     response.clearCookie('access_token');

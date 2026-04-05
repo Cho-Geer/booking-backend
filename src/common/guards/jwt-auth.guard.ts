@@ -14,6 +14,7 @@ import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticationException } from '../exceptions/business.exceptions';
 import * as crypto from 'crypto';
+import { extractAccessToken } from '../utils/request-token.util';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -86,29 +87,12 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   /**
-   * 从请求头中提取 JWT 令牌
+   * 从请求中提取 JWT 令牌
    */
   private extractToken(request: Request): string | null {
-    const cookieToken = (request as Request & { cookies?: Record<string, string> }).cookies?.access_token;
-    if (cookieToken) {
-      return cookieToken;
-    }
-  
-    const authHeader = request.headers.authorization;
-      
-    if (!authHeader) {
-      return null;
-    }
-  
-    const [type, token] = authHeader.split(' ');
-      
-    if (type !== 'Bearer' || !token) {
-      return null;
-    }
-  
-    return token;
+    return extractAccessToken(request);
   }
-  
+
   /**
    * 检查请求中是否存在刷新令牌
    */

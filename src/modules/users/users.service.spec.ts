@@ -313,6 +313,44 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.count).toHaveBeenCalled();
     });
 
+    it('应该使用稳定的默认排序和二级 id 排序', async () => {
+      const query: QueryUserDto = {};
+      const pagination = new PaginationQueryDto();
+      pagination.page = 2;
+      pagination.limit = 20;
+
+      mockPrismaService.user.findMany.mockResolvedValue(mockUsers);
+      mockPrismaService.user.count.mockResolvedValue(2);
+
+      await service.findUsers(query, pagination);
+
+      expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {},
+        skip: 20,
+        take: 20,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }));
+    });
+
+    it('应该对白名单排序字段保留二级 id 排序，非法字段回退默认排序', async () => {
+      const pagination = new PaginationQueryDto();
+      pagination.page = 1;
+      pagination.limit = 10;
+
+      mockPrismaService.user.findMany.mockResolvedValue(mockUsers);
+      mockPrismaService.user.count.mockResolvedValue(2);
+
+      await service.findUsers({ sortBy: 'name', order: 'asc' } as QueryUserDto, pagination);
+      expect(mockPrismaService.user.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      }));
+
+      await service.findUsers({ sortBy: 'invalidField', order: 'asc' } as QueryUserDto, pagination);
+      expect(mockPrismaService.user.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }));
+    });
+
     it('应该根据查询条件过滤用户', async () => {
       const query: QueryUserDto = {
         phone: '13800138001',
