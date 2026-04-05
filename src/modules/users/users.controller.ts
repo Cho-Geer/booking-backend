@@ -21,7 +21,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto, QueryUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
+import { CreateUserDto, QueryUserDto, ToggleUserStatusDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -175,10 +175,10 @@ export class UsersController {
   })
   async toggleUserStatus(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body('status') status: string,
+    @Body(new ValidationPipe()) toggleUserStatusDto: ToggleUserStatusDto,
     @CurrentUser() currentUser: any,
   ): Promise<ApiResponseDto<UserResponseDto>> {
-    const user = await this.usersService.toggleUserStatus(id, status);
+    const user = await this.usersService.toggleUserStatus(id, toggleUserStatusDto.status);
     return ApiResponseDto.success(user, '用户状态更新成功');
   }
   

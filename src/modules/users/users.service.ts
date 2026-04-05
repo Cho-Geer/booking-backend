@@ -8,7 +8,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, AppointmentStatus } from '@prisma/client';
-import { CreateUserDto, UpdateUserDto, UserResponseDto, UserStatsDto, QueryUserDto } from './dto/user.dto';
+import { CreateUserDto, UpdateUserDto, UserResponseDto, UserStatsDto, QueryUserDto, UserStatus } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { 
   ResourceNotFoundException, 
@@ -58,7 +58,7 @@ export class UsersService {
         });
 
         if (existingUserByEmail) {
-          throw new ValidationException('邮箱已被注册');
+          throw new EmailExistsException(createUserDto.email);
         }
       }
 
@@ -78,7 +78,7 @@ export class UsersService {
       this.logger.log(`用户创建成功: ${user.id} - ${user.name}`);
       return this.mapToResponseDto(user);
     } catch (error) {
-      if (error instanceof PhoneNumberExistsException) {
+      if (error instanceof PhoneNumberExistsException || error instanceof EmailExistsException) {
         throw error;
       }
       
@@ -233,7 +233,7 @@ export class UsersService {
    * @param status 新的用户状态
    * @returns 更新后的用户信息
    */
-  async toggleUserStatus(id: string, status: string): Promise<UserResponseDto> {
+  async toggleUserStatus(id: string, status: UserStatus): Promise<UserResponseDto> {
     this.logger.log(`切换用户状态：${id} to ${status}`);
       
     let bookingsToNotify: Array<{
@@ -333,7 +333,7 @@ export class UsersService {
       const updatedUser = await tx.user.update({
         where: { id },
         data: {
-          status: status as any,
+          status,
         },
       });
         

@@ -281,7 +281,7 @@ export class BookingsController {
       throw new ResourceNotFoundException('预约');
     }
     
-    await this.bookingsService.cancelBooking(id, user.id, undefined, user.id);
+    await this.bookingsService.cancelBooking(id, user.id, user.userType, user.id);
   }
 
   /**

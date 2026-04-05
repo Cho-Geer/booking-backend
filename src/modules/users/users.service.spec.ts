@@ -10,7 +10,7 @@ import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { CreateUserDto, UpdateUserDto, QueryUserDto } from './dto/user.dto';
-import { PhoneNumberExistsException, ResourceNotFoundException, DatabaseException } from '../../common/exceptions/business.exceptions';
+import { EmailExistsException, PhoneNumberExistsException, ResourceNotFoundException, DatabaseException } from '../../common/exceptions/business.exceptions';
 import { PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { UserStatus, UserType } from './dto/user.dto';
 
@@ -25,6 +25,15 @@ const mockPrismaService = {
     findMany: jest.fn(),
     findFirst: jest.fn(),
   },
+  userSession: {
+    findMany: jest.fn(),
+    update: jest.fn(),
+  },
+  appointment: {
+    findMany: jest.fn(),
+    update: jest.fn(),
+  },
+  $transaction: jest.fn(async (fn) => fn(mockPrismaService)),
 };
 
 const mockEmailService = {
@@ -131,6 +140,20 @@ describe('UsersService', () => {
       mockPrismaService.user.create.mockRejectedValue(new Error('Database error'));
 
       await expect(service.createUser(createUserDto)).rejects.toThrow(DatabaseException);
+    });
+
+    it('应该抛出EmailExistsException当邮箱已存在', async () => {
+      const createUserWithEmailDto: CreateUserDto = {
+        ...createUserDto,
+        email: 'exists@example.com',
+      };
+
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'existing-user' });
+
+      await expect(service.createUser(createUserWithEmailDto)).rejects.toThrow(EmailExistsException);
+      expect(mockPrismaService.user.create).not.toHaveBeenCalled();
     });
   });
 

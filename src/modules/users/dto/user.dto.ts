@@ -71,6 +71,12 @@ export class CreateUserDto {
 /**
  * 更新用户DTO
  */
+export class ToggleUserStatusDto {
+  @ApiProperty({ description: '用户状态', enum: UserStatus })
+  @IsEnum(UserStatus, { message: '无效的用户状态' })
+  status: UserStatus;
+}
+
 export class UpdateUserDto {
   @ApiProperty({ description: '用户姓名', required: false })
   @IsString({ message: '姓名必须是字符串' })

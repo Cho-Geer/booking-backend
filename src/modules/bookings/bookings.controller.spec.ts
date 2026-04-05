@@ -32,12 +32,14 @@ describe('BookingsController', () => {
     id: 'user-123',
     email: 'test@example.com',
     roles: [UserRole.USER],
+    userType: 'CUSTOMER',
   };
 
   const mockAdmin = {
     id: 'admin-123',
     email: 'admin@example.com',
     roles: [UserRole.ADMIN],
+    userType: 'ADMIN',
   };
 
   const mockAppointment: AppointmentResponseDto = {
@@ -290,7 +292,7 @@ describe('BookingsController', () => {
       await controller.remove('appointment-123', mockUser);
 
       expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
-      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockUser.id, undefined, mockUser.id);
+      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockUser.id, mockUser.userType, mockUser.id);
     });
 
     it('应该抛出预约不存在的异常', async () => {
@@ -299,6 +301,20 @@ describe('BookingsController', () => {
       await expect(controller.remove('non-existent', mockUser)).rejects.toThrow(
         ResourceNotFoundException,
       );
+    });
+
+    it('管理员删除预约时应透传管理员角色', async () => {
+      const adminBooking = {
+        ...mockAppointment,
+        userId: 'other-user-id',
+      };
+
+      mockBookingsService.findBookingById.mockResolvedValue(adminBooking);
+      mockBookingsService.cancelBooking.mockResolvedValue(adminBooking);
+
+      await controller.remove('appointment-123', mockAdmin);
+
+      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockAdmin.id, mockAdmin.userType, mockAdmin.id);
     });
   });
 
