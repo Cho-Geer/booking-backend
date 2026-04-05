@@ -305,6 +305,7 @@ describe('UsersService Logic', () => {
         }),
         skip: 0,
         take: 10,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
       expect(mockPrismaService.user.count).toHaveBeenCalledWith({
         where: expect.objectContaining({
