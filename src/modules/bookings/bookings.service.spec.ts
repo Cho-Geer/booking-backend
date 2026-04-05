@@ -15,7 +15,8 @@ import {
   AppointmentException,
   ResourceConflictException,
   DatabaseException,
-} from '../../common/exceptions/business.exceptions';import { AppointmentStatus } from '@prisma/client';
+} from '../../common/exceptions/business.exceptions';
+import { AppointmentStatus, Prisma } from '@prisma/client';
 
 describe('BookingsService', () => {
   let service: BookingsService;
@@ -120,6 +121,47 @@ describe('BookingsService', () => {
       expect(result).toBeDefined();
       expect(result.id).toBe('booking-123');
       expect(result.customerName).toBe('张三');
+      expect(mockTransaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+      expect(mockPrismaService.appointment.count).toHaveBeenCalledWith({
+        where: {
+          timeSlotId: 'timeslot-123',
+          appointmentDate: new Date('2024-01-15'),
+          status: {
+            in: [
+              AppointmentStatus.PENDING,
+              AppointmentStatus.CONFIRMED,
+              AppointmentStatus.COMPLETED,
+            ],
+          },
+        },
+      });
+    });
+
+    it('应该在串行化冲突后重试创建预约', async () => {
+      const mockTimeSlot = {
+        id: 'timeslot-123',
+        isActive: true,
+        slotTime: '09:00:00',
+        durationMinutes: 30,
+      };
+
+      mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
+      mockPrismaService.appointment.count.mockResolvedValue(0);
+      mockPrismaService.appointment.findFirst.mockResolvedValue(null);
+      mockPrismaService.appointment.create.mockResolvedValue(mockBooking);
+      mockTransaction
+        .mockImplementationOnce(async () => {
+          throw { code: 'P2034' };
+        })
+        .mockImplementationOnce(async (fn) => fn(mockPrismaService));
+
+      const result = await service.createBooking(createBookingDto);
+
+      expect(result.id).toBe('booking-123');
+      expect(mockTransaction).toHaveBeenCalledTimes(2);
     });
 
     it('应该抛出时间段不存在的异常', async () => {
@@ -188,6 +230,24 @@ describe('BookingsService', () => {
       };
 
       await expect(service.createBooking(createDtoWithService)).rejects.toThrow(
+        TimeSlotConflictException,
+      );
+    });
+
+    it('应该将数据库唯一约束冲突映射为时间段冲突异常', async () => {
+      const mockTimeSlot = {
+        id: 'timeslot-123',
+        isActive: true,
+        slotTime: '09:00:00',
+        durationMinutes: 30,
+      };
+
+      mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
+      mockPrismaService.appointment.count.mockResolvedValue(0);
+      mockPrismaService.appointment.findFirst.mockResolvedValue(null);
+      mockPrismaService.appointment.create.mockRejectedValue({ code: 'P2002' });
+
+      await expect(service.createBooking(createBookingDto)).rejects.toThrow(
         TimeSlotConflictException,
       );
     });

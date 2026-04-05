@@ -30,6 +30,11 @@ import { MaskingUtil } from '../../common/utils/masking.util';
 @Injectable()
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
+  private static readonly ACTIVE_BOOKING_STATUSES = [
+    AppointmentStatus.PENDING,
+    AppointmentStatus.CONFIRMED,
+    AppointmentStatus.COMPLETED,
+  ];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -73,72 +78,12 @@ export class BookingsService {
       }
 
       const appointmentNumber = await this.generateAppointmentNumber();
-      const appointment = await this.prisma.$transaction(async (tx) => {
-        const timeSlot = await tx.timeSlot.findUnique({
-          where: { id: createAppointmentDto.timeSlotId },
-        });
-
-        if (!timeSlot) {
-          throw new ResourceNotFoundException('时间段');
-        }
-
-        if (!timeSlot.isActive) {
-          throw new TimeSlotConflictException('时间段不可用');
-        }
-
-        const maxCapacity = 1;
-        const existingAppointments = await tx.appointment.count({
-          where: {
-            timeSlotId: createAppointmentDto.timeSlotId,
-            appointmentDate,
-            status: {
-              in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
-            },
-          },
-        });
-
-        if (existingAppointments >= maxCapacity) {
-          throw new TimeSlotConflictException('时间段已满');
-        }
-
-        if (serviceId) {
-          const conflictingServiceAppointment = await tx.appointment.findFirst({
-            where: {
-              serviceId,
-              timeSlotId: createAppointmentDto.timeSlotId,
-              appointmentDate,
-              status: {
-                in: [AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING],
-              },
-            },
-          });
-
-          if (conflictingServiceAppointment) {
-            throw new TimeSlotConflictException('该服务在该时间段已被预约');
-          }
-        }
-
-        return tx.appointment.create({
-          data: {
-            appointmentNumber,
-            userId: createAppointmentDto.userId,
-            appointmentDate,
-            timeSlotId: createAppointmentDto.timeSlotId,
-            serviceId,
-            customerName: createAppointmentDto.customerName,
-            customerPhone: createAppointmentDto.customerPhone,
-            customerEmail: createAppointmentDto.customerEmail,
-            customerWechat: createAppointmentDto.customerWechat,
-            notes: createAppointmentDto.notes,
-            status: AppointmentStatus.PENDING,
-          },
-          include: {
-            timeSlot: true,
-            user: true,
-            service: true,
-          },
-        });
-      });
+      const appointment = await this.createBookingInSerializableTransaction(
+        createAppointmentDto,
+        appointmentDate,
+        serviceId,
+        appointmentNumber,
+      );
 
       // Send confirmation email asynchronously
       // We do not await this to prevent blocking the response
@@ -155,10 +100,9 @@ export class BookingsService {
 
       return this.mapToResponseDto(appointment, requestingUserId ?? createAppointmentDto.userId);
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      const prismaErrorCode = this.getPrismaErrorCode(error);
+
+      if (prismaErrorCode === 'P2002' || prismaErrorCode === 'P2034') {
         throw new TimeSlotConflictException('预约冲突，请选择其他时间段');
       }
       if (error instanceof ResourceNotFoundException || 
@@ -642,6 +586,107 @@ export class BookingsService {
       this.logger.error('获取预约统计信息失败', error);
       throw new DatabaseException('获取预约统计信息失败');
     }
+  }
+
+
+  private async createBookingInSerializableTransaction(
+    createAppointmentDto: CreateAppointmentDto,
+    appointmentDate: Date,
+    serviceId: string | undefined,
+    appointmentNumber: string,
+  ) {
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const timeSlot = await tx.timeSlot.findUnique({
+            where: { id: createAppointmentDto.timeSlotId },
+          });
+
+          if (!timeSlot) {
+            throw new ResourceNotFoundException('时间段');
+          }
+
+          if (!timeSlot.isActive) {
+            throw new TimeSlotConflictException('时间段不可用');
+          }
+
+          const maxCapacity = 1;
+          const existingAppointments = await tx.appointment.count({
+            where: {
+              timeSlotId: createAppointmentDto.timeSlotId,
+              appointmentDate,
+              status: {
+                in: BookingsService.ACTIVE_BOOKING_STATUSES,
+              },
+            },
+          });
+
+          if (existingAppointments >= maxCapacity) {
+            throw new TimeSlotConflictException('时间段已满');
+          }
+
+          if (serviceId) {
+            const conflictingServiceAppointment = await tx.appointment.findFirst({
+              where: {
+                serviceId,
+                timeSlotId: createAppointmentDto.timeSlotId,
+                appointmentDate,
+                status: {
+                  in: BookingsService.ACTIVE_BOOKING_STATUSES,
+                },
+              },
+            });
+
+            if (conflictingServiceAppointment) {
+              throw new TimeSlotConflictException('该服务在该时间段已被预约');
+            }
+          }
+
+          return tx.appointment.create({
+            data: {
+              appointmentNumber,
+              userId: createAppointmentDto.userId,
+              appointmentDate,
+              timeSlotId: createAppointmentDto.timeSlotId,
+              serviceId,
+              customerName: createAppointmentDto.customerName,
+              customerPhone: createAppointmentDto.customerPhone,
+              customerEmail: createAppointmentDto.customerEmail,
+              customerWechat: createAppointmentDto.customerWechat,
+              notes: createAppointmentDto.notes,
+              status: AppointmentStatus.PENDING,
+            },
+            include: {
+              timeSlot: true,
+              user: true,
+              service: true,
+            },
+          });
+        }, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (error) {
+        if (this.getPrismaErrorCode(error) === 'P2034' && attempt < maxAttempts) {
+          this.logger.warn(`预约创建遇到串行化冲突，正在重试 (${attempt}/${maxAttempts})`);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new TimeSlotConflictException('预约冲突，请选择其他时间段');
+  }
+
+  private getPrismaErrorCode(error: unknown): string | null {
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return null;
+    }
+
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' ? code : null;
   }
 
   /**

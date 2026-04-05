@@ -16,6 +16,7 @@ import {
   VerificationCodeException,
   ResourceNotFoundException,
   PhoneNumberExistsException,
+  EmailExistsException,
   AuthenticationException,
 } from '../../common/exceptions/business.exceptions';
 import { UserStatus, UserType } from '../users/dto/user.dto';
@@ -182,6 +183,15 @@ describe('AuthService', () => {
       mockUsersService.findUserByPhoneNumber.mockResolvedValue(existingUser);
 
       await expect(service.register(registerDto)).rejects.toThrow(PhoneNumberExistsException);
+    });
+
+
+    it('应该透传邮箱已存在异常', async () => {
+      mockCacheManager.get.mockResolvedValue('123456');
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+      mockUsersService.createUser.mockRejectedValue(new EmailExistsException('test@example.com'));
+
+      await expect(service.register({ ...registerDto, email: 'test@example.com' })).rejects.toThrow(EmailExistsException);
     });
   });
 

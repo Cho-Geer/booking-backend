@@ -16,6 +16,7 @@ import {
   AuthenticationException,
   ResourceNotFoundException,
   PhoneNumberExistsException,
+  EmailExistsException,
   VerificationCodeException,
   DatabaseException,
   InvalidPhoneNumberException,
@@ -150,7 +151,8 @@ export class AuthService {
       };
     } catch (error) {
       if (error instanceof VerificationCodeException || 
-          error instanceof PhoneNumberExistsException) {
+          error instanceof PhoneNumberExistsException ||
+          error instanceof EmailExistsException) {
         throw error;
       }
       
