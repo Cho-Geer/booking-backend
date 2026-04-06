@@ -183,11 +183,6 @@ export class TimeSlotsService {
     try {
       const where: Prisma.TimeSlotWhereInput = {
         isActive: true,
-        // 添加时间范围过滤：只包含 09:00-17:00 之间的时间段
-        slotTime: {
-          gte: '09:00:00',
-          lte: '17:00:00'
-        }
       };
 
       if (query.timeSlotId) {
