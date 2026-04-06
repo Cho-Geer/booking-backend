@@ -53,7 +53,7 @@ describe('BookingsController (e2e)', () => {
       },
       create: {
         name: '管理员',
-        phone: '13800138001',
+        phone: '13900139001',
         phoneHash: 'admin_hash',
         userType: UserType.ADMIN,
         status: UserStatus.ACTIVE,
@@ -70,7 +70,7 @@ describe('BookingsController (e2e)', () => {
       },
       create: {
         name: '普通用户',
-        phone: '13800138002',
+        phone: '13900139002',
         phoneHash: 'user_hash',
         userType: UserType.CUSTOMER as any,
         status: UserStatus.ACTIVE,

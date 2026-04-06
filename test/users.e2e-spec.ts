@@ -21,8 +21,8 @@ describe('UsersController (e2e)', () => {
   let cacheManager: Cache;
   let moduleFixture: TestingModule;
 
-  const adminPhoneNumber = '13900139001';
-  const userPhoneNumber = '13800138001';
+  const adminPhoneNumber = '13900139003';
+  const userPhoneNumber = '13900139004';
   let phoneSeq = 1000;
   const nextPhone = () => `1350013${String(phoneSeq++).padStart(4, '0')}`;
 
