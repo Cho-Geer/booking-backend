@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,10 +17,13 @@ export interface RetentionRunSummary {
 export class RetentionService {
   private readonly logger = new Logger(RetentionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   getRetentionDays(): number {
-    const value = Number(process.env.RETENTION_DAYS ?? 30);
+    const value = Number(this.configService.get<string>('RETENTION_DAYS', '30'));
     if (!Number.isFinite(value) || value <= 0) {
       return 30;
     }
@@ -27,7 +31,7 @@ export class RetentionService {
   }
 
   getBatchSize(): number {
-    const value = Number(process.env.RETENTION_BATCH_SIZE ?? 500);
+    const value = Number(this.configService.get<string>('RETENTION_BATCH_SIZE', '500'));
     if (!Number.isFinite(value) || value <= 0) {
       return 500;
     }
@@ -35,7 +39,7 @@ export class RetentionService {
   }
 
   getBatchSleepMs(): number {
-    const value = Number(process.env.RETENTION_BATCH_SLEEP_MS ?? 200);
+    const value = Number(this.configService.get<string>('RETENTION_BATCH_SLEEP_MS', '200'));
     if (!Number.isFinite(value) || value < 0) {
       return 200;
     }
@@ -43,12 +47,12 @@ export class RetentionService {
   }
 
   isEnabled(): boolean {
-    const raw = (process.env.RETENTION_ENABLED ?? 'true').toLowerCase();
+    const raw = this.configService.get<string>('RETENTION_ENABLED', 'true').toLowerCase();
     return !['0', 'false', 'off', 'no'].includes(raw);
   }
 
   isDryRunEnabled(): boolean {
-    const raw = (process.env.RETENTION_DRY_RUN ?? 'false').toLowerCase();
+    const raw = this.configService.get<string>('RETENTION_DRY_RUN', 'false').toLowerCase();
     return ['1', 'true', 'on', 'yes'].includes(raw);
   }
 

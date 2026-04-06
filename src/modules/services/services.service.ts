@@ -188,7 +188,7 @@ export class ServicesService {
   async toggleServiceStatus(id: string, toggleServiceStatusDto: ToggleServiceStatusDto): Promise<ServiceResponseDto> {
     this.logger.log(`Toggling service status: ${id} to ${toggleServiceStatusDto.isActive}`);
     
-    let bookingsToNotify: Array<{
+    const bookingsToNotify: Array<{
       customerEmail: string;
       customerName: string;
       appointmentDate: Date;

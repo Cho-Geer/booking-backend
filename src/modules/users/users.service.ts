@@ -238,7 +238,7 @@ export class UsersService {
   async toggleUserStatus(id: string, status: UserStatus): Promise<UserResponseDto> {
     this.logger.log(`切换用户状态：${id} to ${status}`);
       
-    let bookingsToNotify: Array<{
+    const bookingsToNotify: Array<{
       customerEmail: string;
       customerName: string;
       appointmentDate: Date;

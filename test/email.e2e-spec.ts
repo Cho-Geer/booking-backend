@@ -74,6 +74,44 @@ describe('Email Service (E2E) with TestContainers', () => {
     if (mailhogContainer) {
       await mailhogContainer.stop();
     }
+    
+    // Clean up dynamically loaded HandlebarsAdapter module to prevent open handle warning
+    try {
+      const { join } = await import('path');
+      const adapterPath = join(
+        process.cwd(),
+        'node_modules',
+        '@nestjs-modules',
+        'mailer',
+        'dist',
+        'adapters',
+        'handlebars.adapter.js'
+      );
+      
+      // Delete from require cache if it exists
+      if (require.cache[adapterPath]) {
+        delete require.cache[adapterPath];
+      }
+      
+      // Also clean up any related cached modules
+      const cacheKeys = Object.keys(require.cache);
+      for (const key of cacheKeys) {
+        if (key.includes('handlebars.adapter') || key.includes('@nestjs-modules/mailer')) {
+          delete require.cache[key];
+        }
+      }
+    } catch (error) {
+      // Ignore errors during cleanup
+      console.warn('Failed to clean up HandlebarsAdapter cache:', error.message);
+    }
+    
+    // Reset Jest modules to clean up any remaining open handles
+    jest.resetModules();
+    
+    // Force garbage collection to clean up any remaining handles
+    if (global.gc) {
+      global.gc();
+    }
   });
 
   it('should send a booking confirmation email', async () => {

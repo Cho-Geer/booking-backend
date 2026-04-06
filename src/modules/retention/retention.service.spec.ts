@@ -5,6 +5,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { RetentionService } from './retention.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -14,6 +15,14 @@ const mockPrismaService = {
     findMany: jest.fn(),
     deleteMany: jest.fn(),
   },
+};
+
+const mockConfigService = {
+  get: jest.fn((key: string, defaultValue?: any) => {
+    // 从process.env读取值，如果不存在则返回defaultValue
+    const value = process.env[key];
+    return value !== undefined ? value : defaultValue;
+  }),
 };
 
 describe('RetentionService', () => {
@@ -27,6 +36,7 @@ describe('RetentionService', () => {
       providers: [
         RetentionService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
