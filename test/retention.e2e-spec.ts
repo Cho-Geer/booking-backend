@@ -80,6 +80,8 @@ describe('RetentionService (e2e)', () => {
     const recentDate = new Date(now);
     recentDate.setDate(recentDate.getDate() - 10);
     const appointmentDate = new Date(now);
+    const pendingAppointmentDate = new Date(now);
+    pendingAppointmentDate.setDate(pendingAppointmentDate.getDate() + 1);
 
     const cancelledOld = await prismaService.appointment.create({
       data: {
@@ -127,7 +129,7 @@ describe('RetentionService (e2e)', () => {
       data: {
         appointmentNumber: createNumber(),
         userId: testUserId,
-        appointmentDate,
+        appointmentDate: pendingAppointmentDate,
         timeSlotId: testTimeSlotId,
         customerName: 'old-pending',
         customerPhone: '13000000004',

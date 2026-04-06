@@ -38,6 +38,7 @@ describe('Email Service (E2E) with TestContainers', () => {
     // Ensure MAIL_USER is unset to verify the fix
     delete process.env.MAIL_USER;
     delete process.env.MAIL_SECURE; // Ensure it uses default false (boolean)
+    delete process.env.MAIL_DISABLE_TEMPLATES;
 
     module = await Test.createTestingModule({
       imports: [

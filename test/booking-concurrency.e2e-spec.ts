@@ -6,7 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { join } from 'path';
 import * as request from 'supertest';
 import { CreateAppointmentDto } from '../src/modules/bookings/dto/booking.dto';
 import { UserType, UserStatus } from '../src/modules/users/dto/user.dto';
@@ -43,9 +44,12 @@ describe('Booking Concurrency (E2E)', () => {
     
     console.log(`Database URL: ${databaseUrl}`);
 
-    // Run migrations
-    execSync(`npx prisma migrate deploy`, {
+    // Run migrations through the current WSL Node runtime.
+    const prismaCliPath = join(__dirname, '..', 'node_modules', 'prisma', 'build', 'index.js');
+    execFileSync(process.execPath, [prismaCliPath, 'migrate', 'deploy'], {
+      cwd: join(__dirname, '..'),
       env: { ...process.env, DATABASE_URL: databaseUrl },
+      stdio: 'inherit',
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -62,8 +66,12 @@ describe('Booking Concurrency (E2E)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-    await container.stop();
+    if (app) {
+      await app.close();
+    }
+    if (container) {
+      await container.stop();
+    }
   });
 
   beforeEach(async () => {
