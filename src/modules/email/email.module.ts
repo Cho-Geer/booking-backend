@@ -1,6 +1,7 @@
 
 import { Module } from '@nestjs/common';
 import { MailerModule } from '@nestjs-modules/mailer';
+import type { TemplateAdapter } from '@nestjs-modules/mailer/dist/interfaces/template-adapter.interface';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EmailService } from './email.service';
 import { join } from 'path';
@@ -48,7 +49,7 @@ import { parseBooleanConfig } from '../../common/utils/config.util';
         );
         const requireFromModule = createRequire(__filename);
         const { HandlebarsAdapter } = requireFromModule(adapterPath) as {
-          HandlebarsAdapter: new () => unknown;
+          HandlebarsAdapter: new () => TemplateAdapter;
         };
 
         return {
