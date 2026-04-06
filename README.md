@@ -272,3 +272,124 @@ docker compose up -d
 ```
 
 The NestJS API itself is started separately with the npm scripts above.
+
+## Docker Environment Setup for Testing
+
+The E2E tests use TestContainers to run PostgreSQL containers. To run these tests locally, you need a working Docker environment.
+
+### 1. Install Docker
+
+#### Windows
+1. Download and install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
+2. During installation, enable WSL 2 backend (recommended) or Hyper-V backend
+3. Restart your computer after installation
+4. Start Docker Desktop from the Start menu
+
+#### macOS
+1. Download and install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+2. Move Docker.app to Applications folder
+3. Start Docker Desktop from Applications
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Uninstall old versions
+sudo apt-get remove docker docker-engine docker.io containerd runc
+
+# Install dependencies
+sudo apt-get update
+sudo apt-get install apt-transport-https ca-certificates curl gnupg lsb-release
+
+# Add Docker's official GPG key
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# Set up stable repository
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker Engine
+sudo apt-get update
+sudo apt-get install docker-ce docker-ce-cli containerd.io
+
+# Start Docker service
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+### 2. Verify Docker Installation
+
+```bash
+docker --version
+docker info
+docker run hello-world
+```
+
+### 3. Configure User Permissions (Linux/macOS)
+
+Add your user to the `docker` group to avoid using `sudo`:
+
+```bash
+sudo usermod -aG docker $USER
+# Log out and log back in for changes to take effect
+```
+
+### 4. Configure TestContainers Environment
+
+TestContainers needs to detect Docker. Set environment variables:
+
+#### Windows PowerShell
+```powershell
+$env:DOCKER_HOST = "npipe:////./pipe/docker_engine"
+```
+
+#### Linux/macOS Bash
+```bash
+export DOCKER_HOST=unix:///var/run/docker.sock
+# Add to ~/.bashrc or ~/.zshrc for persistence
+echo 'export DOCKER_HOST=unix:///var/run/docker.sock' >> ~/.bashrc
+```
+
+### 5. Verify TestContainers Configuration
+
+Run a simple test to verify Docker integration:
+
+```bash
+# In the booking-backend directory
+npm run test:e2e -- --testNamePattern="setup" --verbose
+```
+
+Alternatively, use the validation script to check Docker environment:
+
+```powershell
+# Run the validation script (Windows)
+./scripts/check-docker-env.ps1
+
+# Or for Linux/macOS, you can create a similar bash script
+```
+
+### 6. Troubleshooting Common Issues
+
+#### "Could not find a working container runtime strategy"
+- Ensure Docker Desktop is running (Windows/macOS)
+- Ensure Docker service is started (Linux: `sudo systemctl status docker`)
+- Verify `DOCKER_HOST` environment variable is set correctly
+- Check user permissions (Linux: user should be in `docker` group)
+
+#### "Permission denied while trying to connect to the Docker daemon socket"
+```bash
+# Linux/macOS
+sudo usermod -aG docker $USER
+# Log out and log back in
+```
+
+#### TestContainers timeout
+- Configure Docker image accelerator for faster downloads (China users)
+- Increase timeout in test configuration if needed
+
+### 7. Alternative: Skip Docker Tests
+
+If Docker is not available, you can skip E2E tests:
+
+```bash
+npm run test  # Runs unit tests only
+```
+
+For CI/CD environments, Docker-based tests will run automatically.

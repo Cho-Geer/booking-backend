@@ -93,7 +93,9 @@ export class UsersController {
       userType: myQuery?.userType,
       status: myQuery?.status,
       startDate: myQuery?.startDate,
-      endDate: myQuery?.endDate
+      endDate: myQuery?.endDate,
+      sortBy: myQuery?.sortBy,
+      order: myQuery?.order
     };
     const result = await this.usersService.findUsers(query, pagination);
     return ApiResponseDto.success(result, '获取用户列表成功');
