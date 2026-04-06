@@ -29,6 +29,13 @@ export const csrfProtectionMiddleware = (request: Request, response: Response, n
     return;
   }
 
+  // 豁免Bearer Token请求：如果请求包含有效的Authorization头，则跳过CSRF检查
+  const authHeader = request.headers['authorization'] as string | undefined;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+
   const cookieToken = request.cookies?.csrf_token as string | undefined;
   const headerTokenRaw = request.headers['x-csrf-token'];
   const headerToken = Array.isArray(headerTokenRaw) ? headerTokenRaw[0] : headerTokenRaw;
