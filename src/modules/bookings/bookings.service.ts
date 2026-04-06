@@ -341,6 +341,13 @@ export class BookingsService {
       return this.mapToResponseDto(appointment, requestingUserId);
     } catch (error) {
       this.logger.error(`更新预约失败: ${error.message}`, error.stack);
+      
+      // 添加Prisma错误代码检查
+      const prismaErrorCode = this.getPrismaErrorCode(error);
+      if (prismaErrorCode === 'P2002' || prismaErrorCode === 'P2034') {
+        throw new TimeSlotConflictException('预约冲突，请选择其他时间段');
+      }
+      
       if (error instanceof ResourceNotFoundException) {
         throw error;
       }
