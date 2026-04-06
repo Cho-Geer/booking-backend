@@ -196,6 +196,31 @@ export class BookingsService {
       
       // 构建更新数据，只更新提供的字段
       const updateData: any = {};
+      
+      // 如果更新了timeSlotId，进行验证
+      if (updateAppointmentDto.timeSlotId !== undefined) {
+        // 确定预约日期：使用新日期（如果提供）或原有日期
+        const appointmentDate = updateAppointmentDto.appointmentDate !== undefined
+          ? new Date(updateAppointmentDto.appointmentDate)
+          : existingAppointment.appointmentDate;
+        
+        // 确定服务ID：使用新服务ID（如果提供）或原有服务ID
+        const serviceId = updateAppointmentDto.serviceId !== undefined
+          ? updateAppointmentDto.serviceId
+          : existingAppointment.serviceId;
+        
+        // 验证时间段是否可用
+        await this.validateTimeSlotForBooking(
+          updateAppointmentDto.timeSlotId,
+          appointmentDate,
+          serviceId,
+          id // 排除当前预约本身
+        );
+        
+        updateData.timeSlotId = updateAppointmentDto.timeSlotId;
+        this.logger.log(`设置时间段ID: ${updateAppointmentDto.timeSlotId}`);
+      }
+      
       if (updateAppointmentDto.status !== undefined) {
         // 确保状态值是有效的枚举值
         updateData.status = updateAppointmentDto.status;
@@ -204,10 +229,6 @@ export class BookingsService {
       if (updateAppointmentDto.appointmentDate !== undefined) {
         updateData.appointmentDate = new Date(updateAppointmentDto.appointmentDate);
         this.logger.log(`设置预约日期: ${updateAppointmentDto.appointmentDate}`);
-      }
-      if (updateAppointmentDto.timeSlotId !== undefined) {
-        updateData.timeSlotId = updateAppointmentDto.timeSlotId;
-        this.logger.log(`设置时间段ID: ${updateAppointmentDto.timeSlotId}`);
       }
       if (updateAppointmentDto.serviceId !== undefined) {
         updateData.serviceId = updateAppointmentDto.serviceId;
@@ -236,15 +257,71 @@ export class BookingsService {
       
       this.logger.log(`构建的更新数据: ${JSON.stringify(updateData)}`);
       
-      // 更新预约
-      const appointment = await this.prisma.appointment.update({
-        where: { id },
-        data: updateData,
-        include: {
-          timeSlot: true,
-          user: true,
-          service: true
+      // 在事务中更新预约，确保数据一致性
+      const appointment = await this.prisma.$transaction(async (tx) => {
+        // 如果在updateData中更新了timeSlotId，在事务内重新验证
+        if (updateData.timeSlotId !== undefined) {
+          // 确定预约日期：使用新日期（如果提供）或从数据库获取原有日期
+          const appointmentDate = updateData.appointmentDate !== undefined
+            ? updateData.appointmentDate
+            : existingAppointment.appointmentDate;
+          
+          // 确定服务ID：使用新服务ID（如果提供）或原有服务ID
+          const serviceId = updateData.serviceId !== undefined
+            ? updateData.serviceId
+            : existingAppointment.serviceId;
+          
+          // 验证时间段是否存在且可用（使用事务客户端）
+          const timeSlot = await tx.timeSlot.findUnique({
+            where: { id: updateData.timeSlotId },
+          });
+          if (!timeSlot) {
+            throw new ResourceNotFoundException('时间段');
+          }
+          if (!timeSlot.isActive) {
+            throw new TimeSlotConflictException('时间段不可用');
+          }
+          
+          // 容量检查（最大容量为1）
+          const existingAppointments = await tx.appointment.count({
+            where: {
+              timeSlotId: updateData.timeSlotId,
+              appointmentDate,
+              status: { in: BookingsService.ACTIVE_BOOKING_STATUSES },
+              id: { not: id }, // 排除当前预约本身
+            },
+          });
+          if (existingAppointments >= 1) {
+            throw new TimeSlotConflictException('时间段已满');
+          }
+          
+          // 服务冲突检查（如果提供serviceId）
+          if (serviceId) {
+            const conflictingServiceAppointment = await tx.appointment.findFirst({
+              where: {
+                serviceId,
+                timeSlotId: updateData.timeSlotId,
+                appointmentDate,
+                status: { in: BookingsService.ACTIVE_BOOKING_STATUSES },
+                id: { not: id },
+              },
+            });
+            if (conflictingServiceAppointment) {
+              throw new TimeSlotConflictException('该服务在该时间段已被预约');
+            }
+          }
         }
+        
+        // 执行更新
+        return tx.appointment.update({
+          where: { id },
+          data: updateData,
+          include: {
+            timeSlot: true,
+            user: true,
+            service: true
+          }
+        });
       });
 
       this.logger.log(`预约更新成功: ${appointment.id}`);
@@ -268,6 +345,9 @@ export class BookingsService {
         throw error;
       }
       if (error instanceof BusinessRuleException) {
+        throw error;
+      }
+      if (error instanceof TimeSlotConflictException) {
         throw error;
       }
       throw new DatabaseException('更新预约失败');
@@ -687,6 +767,62 @@ export class BookingsService {
 
     const code = (error as { code?: unknown }).code;
     return typeof code === 'string' ? code : null;
+  }
+
+  /**
+   * 验证时间段是否可用于预约
+   * @param timeSlotId 时间段ID
+   * @param appointmentDate 预约日期
+   * @param serviceId 服务ID（可选）
+   * @param excludeAppointmentId 排除的预约ID（可选，用于更新操作）
+   */
+  private async validateTimeSlotForBooking(
+    timeSlotId: string,
+    appointmentDate: Date,
+    serviceId?: string,
+    excludeAppointmentId?: string
+  ) {
+    // 1. 检查时间段是否存在
+    const timeSlot = await this.prisma.timeSlot.findUnique({
+      where: { id: timeSlotId },
+    });
+    if (!timeSlot) {
+      throw new ResourceNotFoundException('时间段');
+    }
+
+    // 2. 检查时间段是否活跃
+    if (!timeSlot.isActive) {
+      throw new TimeSlotConflictException('时间段不可用');
+    }
+
+    // 3. 容量检查（最大容量为1）
+    const existingAppointments = await this.prisma.appointment.count({
+      where: {
+        timeSlotId,
+        appointmentDate,
+        status: { in: BookingsService.ACTIVE_BOOKING_STATUSES },
+        ...(excludeAppointmentId && { id: { not: excludeAppointmentId } }),
+      },
+    });
+    if (existingAppointments >= 1) {
+      throw new TimeSlotConflictException('时间段已满');
+    }
+
+    // 4. 服务冲突检查（如果提供serviceId）
+    if (serviceId) {
+      const conflictingServiceAppointment = await this.prisma.appointment.findFirst({
+        where: {
+          serviceId,
+          timeSlotId,
+          appointmentDate,
+          status: { in: BookingsService.ACTIVE_BOOKING_STATUSES },
+          ...(excludeAppointmentId && { id: { not: excludeAppointmentId } }),
+        },
+      });
+      if (conflictingServiceAppointment) {
+        throw new TimeSlotConflictException('该服务在该时间段已被预约');
+      }
+    }
   }
 
   /**

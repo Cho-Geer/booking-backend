@@ -42,9 +42,16 @@ describe('BookingsController (e2e)', () => {
     prismaService = moduleFixture.get<PrismaService>(PrismaService);
     jwtService = moduleFixture.get<JwtService>(JwtService);
 
-    // 创建测试管理员用户
-    adminUser = await prismaService.user.create({
-      data: {
+    // 创建测试管理员用户（使用upsert避免重复）
+    adminUser = await prismaService.user.upsert({
+      where: { phone: '13800138001' },
+      update: {
+        name: '管理员',
+        phoneHash: 'admin_hash',
+        userType: UserType.ADMIN,
+        status: UserStatus.ACTIVE,
+      },
+      create: {
         name: '管理员',
         phone: '13800138001',
         phoneHash: 'admin_hash',
@@ -53,8 +60,15 @@ describe('BookingsController (e2e)', () => {
       },
     });
 
-    normalUser = await prismaService.user.create({
-      data: {
+    normalUser = await prismaService.user.upsert({
+      where: { phone: '13800138002' },
+      update: {
+        name: '普通用户',
+        phoneHash: 'user_hash',
+        userType: UserType.CUSTOMER as any,
+        status: UserStatus.ACTIVE,
+      },
+      create: {
         name: '普通用户',
         phone: '13800138002',
         phoneHash: 'user_hash',
