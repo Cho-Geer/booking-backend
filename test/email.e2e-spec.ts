@@ -5,6 +5,20 @@ import { EmailModule } from '../src/modules/email/email.module';
 import { EmailService } from '../src/modules/email/email.service';
 import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';
 
+interface MailHogMessage {
+  Content: {
+    Headers: {
+      To: string[];
+      Subject: string[];
+    };
+    Body: string;
+  };
+}
+
+interface MailHogResponse {
+  items: MailHogMessage[];
+}
+
 describe('Email Service (E2E) with TestContainers', () => {
   let module: TestingModule;
   let emailService: EmailService;
@@ -76,9 +90,7 @@ describe('Email Service (E2E) with TestContainers', () => {
 
     // Verify email received in Mailhog via API
     const response = await fetch(`http://${mailhogContainer.getHost()}:${apiPort}/api/v2/messages`);
-    const data = await response.json();
-    
-    // @ts-ignore
+    const data = (await response.json()) as MailHogResponse;
     const messages = data.items;
 
     expect(messages.length).toBeGreaterThan(0);

@@ -4,6 +4,7 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EmailService } from './email.service';
 import { join } from 'path';
+import { createRequire } from 'module';
 import { parseBooleanConfig } from '../../common/utils/config.util';
 
 @Module({
@@ -45,7 +46,10 @@ import { parseBooleanConfig } from '../../common/utils/config.util';
           'adapters',
           'handlebars.adapter.js',
         );
-        const { HandlebarsAdapter } = require(adapterPath);
+        const requireFromModule = createRequire(__filename);
+        const { HandlebarsAdapter } = requireFromModule(adapterPath) as {
+          HandlebarsAdapter: new () => unknown;
+        };
 
         return {
           ...baseConfig,
