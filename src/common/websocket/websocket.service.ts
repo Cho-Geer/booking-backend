@@ -157,11 +157,12 @@ export class WebsocketService {
    */
   async getUserNotifications(query: NotificationQueryDto): Promise<NotificationListResponseDto> {
     try{
-      const { page = 1, limit = 10 } = query;
-      // 确保page和limit是数字类型
+      const { page = 1, limit = 10, offset } = query;
+      // 确保page、limit和offset是数字类型
       const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
       const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
-      const skip = (pageNum - 1) * limitNum;
+      const offsetNum = typeof offset === 'string' ? parseInt(offset, 10) : offset;
+      const skip = offsetNum !== undefined ? offsetNum : (pageNum - 1) * limitNum;
       const where: any = {};
       
       if (query.userId) {
@@ -175,7 +176,9 @@ export class WebsocketService {
       if (query.isRead !== undefined) {
         where.isRead = query.isRead;
       }
-      this.logger.log(`查询预约列表: page=${pageNum}, limit=${limitNum}`);
+      // 计算实际页码（基于skip和limit）
+      const actualPage = limitNum > 0 ? Math.floor(skip / limitNum) + 1 : 1;
+      this.logger.log(`查询通知列表: page=${pageNum}, limit=${limitNum}, offset=${offsetNum}, skip=${skip}, actualPage=${actualPage}`);
       // 查询总数
       const total = await this.prisma.notification.count({ where });
       this.logger.log(`查询到的总数: ${total}`);
@@ -204,7 +207,7 @@ export class WebsocketService {
       const result = {
         items,
         total,
-        page: pageNum,
+        page: actualPage,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum)
       };
