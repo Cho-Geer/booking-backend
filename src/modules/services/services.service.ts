@@ -47,7 +47,7 @@ export class ServicesService {
         where.name = query.name;
       }
 
-      if (query.price) {
+      if (query.price !== undefined) {
         where.price = query.price;
       }
 
@@ -55,7 +55,7 @@ export class ServicesService {
         where.categoryId = query.categoryId;
       }
 
-      if (query.durationMinutes) {
+      if (query.durationMinutes !== undefined) {
         where.durationMinutes = query.durationMinutes;
       }
 
