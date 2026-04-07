@@ -237,4 +237,9 @@ export class PaginationQueryDto {
   getTake(): number {
     return this.limit!;
   }
+
+  constructor(options?: {page?: number, limit?: number}){
+    this.page = options?.page ?? 1;
+    this.limit = options?.limit ?? 10;
+  }
 }

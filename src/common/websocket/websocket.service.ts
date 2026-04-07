@@ -8,30 +8,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebsocketGateway, NotificationMessage } from './websocket.gateway';
 import { PrismaService } from '../prisma/prisma.service';
-
-/**
- * 通知创建DTO
- */
-export interface NotificationCreateDto {
-  userId: string;
-  type: 'SMS' | 'EMAIL' | 'WECHAT' | 'PUSH';
-  title: string;
-  content: string;
-  priority?: 'low' | 'medium' | 'high';
-  data?: any;
-  scheduledAt?: Date;
-}
-
-/**
- * 通知查询DTO
- */
-export interface NotificationQueryDto {
-  userId?: string;
-  type?: string[];
-  isRead?: boolean;
-  limit?: number;
-  offset?: number;
-}
+import { NotificationQueryDto, NotificationListResponseDto, NotificationCreateDto, NotificationDto, NotificationResponseDto } from './dto/notification.dto';
+import { DatabaseException } from '../../common/exceptions/business.exceptions';
 
 /**
  * WebSocket服务类
@@ -177,27 +155,69 @@ export class WebsocketService {
    * @param query 查询条件
    * @returns 通知列表
    */
-  async getUserNotifications(query: NotificationQueryDto): Promise<any> {
-    const where: any = {};
-    
-    if (query.userId) {
-      where.userId = query.userId;
-    }
-    
-    if (query.type && query.type.length > 0) {
-      where.type = { in: query.type };
-    }
-    
-    if (query.isRead !== undefined) {
-      where.isRead = query.isRead;
-    }
+  async getUserNotifications(query: NotificationQueryDto): Promise<NotificationListResponseDto> {
+    try{
+      const { page = 1, limit = 10, offset } = query;
+      // 确保page、limit和offset是数字类型
+      const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
+      const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
+      const offsetNum = typeof offset === 'string' ? parseInt(offset, 10) : offset;
+      const skip = offsetNum !== undefined ? offsetNum : (pageNum - 1) * limitNum;
+      const where: any = {};
+      
+      if (query.userId) {
+        where.userId = query.userId;
+      }
+      
+      if (query.type && query.type.length > 0) {
+        where.type = { in: query.type };
+      }
+      
+      if (query.isRead !== undefined) {
+        where.isRead = query.isRead;
+      }
+      // 计算实际页码（基于skip和limit）
+      const actualPage = limitNum > 0 ? Math.floor(skip / limitNum) + 1 : 1;
+      this.logger.log(`查询通知列表: page=${pageNum}, limit=${limitNum}, offset=${offsetNum}, skip=${skip}, actualPage=${actualPage}`);
+      // 查询总数
+      const total = await this.prisma.notification.count({ where });
+      this.logger.log(`查询到的总数: ${total}`);
 
-    return this.prisma.notification.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: query.limit || 20,
-      skip: query.offset || 0,
-    });
+      // 查询数据
+      const notifications = await this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limitNum,
+        skip,
+      });
+
+      this.logger.log(`查询到的通知数量: ${notifications.length}`);
+
+      const items = notifications.map((notification: NotificationDto) => {
+          try {
+            return this.mapToResponseDto(notification);
+          } catch (error) {
+            this.logger.error(`映射通知数据失败: ${error.message}`, error);
+            throw error;
+          }
+        });
+      this.logger.log(`映射后的通知数量: ${items.length}`);
+
+      // 直接返回对象而不是使用构造函数
+      const result = {
+        items,
+        total,
+        page: actualPage,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      };
+      
+      this.logger.log(`最终返回结果: ${JSON.stringify(result)}`);
+      return result;
+    } catch (error) {
+      this.logger.error('查询通知列表失败', error);
+      throw new DatabaseException('查询通知列表失败');
+    }
   }
 
   /**
@@ -353,5 +373,23 @@ export class WebsocketService {
    */
   isUserOnline(userId: string): boolean {
     return this.websocketGateway.isUserOnline(userId);
+  }
+
+  private mapToResponseDto(notification: NotificationDto): NotificationResponseDto {
+    return {
+      id: notification.id,
+      userId: notification.userId,
+      appointmentId: notification.appointmentId,
+      type: notification.type,
+      title: notification.title,
+      content: notification.content,
+      isRead: notification.isRead,
+      status: notification.status,
+      scheduledFor: notification.scheduledFor,
+      sentAt: notification.sentAt,
+      readAt: notification.readAt,
+      metadata: notification.metadata,
+      createdAt: notification.createdAt,
+    };
   }
 }

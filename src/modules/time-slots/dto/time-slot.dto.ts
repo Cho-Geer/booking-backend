@@ -7,6 +7,7 @@
 
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, IsNumber, IsBoolean, IsOptional, IsUUID, IsInt, Min, Max, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 /**
  * 创建时间段请求DTO
@@ -139,6 +140,7 @@ export class TimeSlotAvailabilityDto {
   date: string;
 
   @ApiProperty({ description: '时间段ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsOptional()
   @IsUUID('4', { message: '时间段ID格式无效' })
   timeSlotId?: string;

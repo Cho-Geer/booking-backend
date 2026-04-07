@@ -7,22 +7,32 @@
 
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { resolveJwtExpiresIn } from '../../common/utils/jwt-expires.util';
 import { BookingsService } from './bookings.service';
+import { TimeSlotsService } from '../time-slots/time-slots.service';
 import { BookingsController } from './bookings.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
+import { ConfigModule } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
     PrismaModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-secret-key',
-      signOptions: {
-        expiresIn: process.env.JWT_EXPIRES_IN || '1h',
-      },
+    EmailModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: {
+          expiresIn: resolveJwtExpiresIn(configService.get('JWT_EXPIRES_IN')),
+        },
+      }),
+      inject: [ConfigService],
     }),
   ],
   controllers: [BookingsController],
-  providers: [BookingsService],
-  exports: [BookingsService], // 导出服务，供其他模块使用
+  providers: [BookingsService, TimeSlotsService],
+  exports: [BookingsService, TimeSlotsService], // 导出服务，供其他模块使用
 })
 export class BookingsModule {}

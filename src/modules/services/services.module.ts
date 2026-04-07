@@ -1,0 +1,25 @@
+
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ServicesController } from './services.controller';
+import { ServicesService } from './services.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
+@Module({
+  imports: [PrismaModule, JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: {
+          expiresIn: configService.get('JWT_EXPIRES_IN', '7d'),
+        },
+      }),
+      inject: [ConfigService],
+    }), EmailModule],
+  controllers: [ServicesController],
+  providers: [ServicesService],
+  exports: [ServicesService],
+})
+export class ServicesModule {}

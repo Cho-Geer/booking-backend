@@ -5,7 +5,7 @@
  * @since 2024
  */
 
-import { Injectable, NotFoundException, ConflictException, BadRequestException, HttpStatus } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTimeSlotDto, UpdateTimeSlotDto, TimeSlotResponseDto, TimeSlotQueryDto, TimeSlotAvailabilityDto, TimeSlotAvailabilityResponseDto } from './dto/time-slot.dto';
 import { BusinessException } from '../../common/exceptions/business.exceptions';
@@ -13,6 +13,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class TimeSlotsService {
+  private readonly logger = new Logger(TimeSlotsService.name);
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -181,7 +182,7 @@ export class TimeSlotsService {
   async getAvailability(query: TimeSlotAvailabilityDto): Promise<TimeSlotAvailabilityResponseDto[]> {
     try {
       const where: Prisma.TimeSlotWhereInput = {
-        isActive: true
+        isActive: true,
       };
 
       if (query.timeSlotId) {
@@ -203,7 +204,7 @@ export class TimeSlotsService {
           }
         });
 
-        const maxCapacity = 10; // 假设每个时间段最大容量为10
+        const maxCapacity = 1;
         const availableCount = maxCapacity - bookedCount;
         const isAvailable = availableCount > 0 && slot.isActive;
 
@@ -244,9 +245,9 @@ export class TimeSlotsService {
   }
 
   /**
-   * 转换为响应DTO
+   * 转换为响应 DTO
    * @param timeSlot 时间段实体
-   * @returns 响应DTO
+   * @returns 响应 DTO
    */
   private toResponseDto(timeSlot: any): TimeSlotResponseDto {
     return {
@@ -258,5 +259,47 @@ export class TimeSlotsService {
       createdAt: timeSlot.createdAt,
       updatedAt: timeSlot.updatedAt
     };
+  }
+
+  /**
+   * 初始化默认时间段
+   * 创建 09:00-17:00 的默认时间段，每 30 分钟一个时间段
+   */
+  async initializeDefaultTimeSlots(): Promise<void> {
+    try {
+      // 检查是否已有时间段数据
+      const existingSlots = await this.prisma.timeSlot.count();
+      
+      if (existingSlots === 0) {
+        // 定义默认时间段：09:00-17:00，每 30 分钟一个时间段
+        const defaultSlots = [
+          { slotTime: '09:00:00', durationMinutes: 30, isActive: true, displayOrder: 1 },
+          { slotTime: '09:30:00', durationMinutes: 30, isActive: true, displayOrder: 2 },
+          { slotTime: '10:00:00', durationMinutes: 30, isActive: true, displayOrder: 3 },
+          { slotTime: '10:30:00', durationMinutes: 30, isActive: true, displayOrder: 4 },
+          { slotTime: '11:00:00', durationMinutes: 30, isActive: true, displayOrder: 5 },
+          { slotTime: '11:30:00', durationMinutes: 30, isActive: true, displayOrder: 6 },
+          { slotTime: '12:00:00', durationMinutes: 30, isActive: true, displayOrder: 7 },
+          { slotTime: '12:30:00', durationMinutes: 30, isActive: true, displayOrder: 8 },
+          { slotTime: '13:00:00', durationMinutes: 30, isActive: true, displayOrder: 9 },
+          { slotTime: '13:30:00', durationMinutes: 30, isActive: true, displayOrder: 10 },
+          { slotTime: '14:00:00', durationMinutes: 30, isActive: true, displayOrder: 11 },
+          { slotTime: '14:30:00', durationMinutes: 30, isActive: true, displayOrder: 12 },
+          { slotTime: '15:00:00', durationMinutes: 30, isActive: true, displayOrder: 13 },
+          { slotTime: '15:30:00', durationMinutes: 30, isActive: true, displayOrder: 14 },
+          { slotTime: '16:00:00', durationMinutes: 30, isActive: true, displayOrder: 15 },
+          { slotTime: '16:30:00', durationMinutes: 30, isActive: true, displayOrder: 16 },
+        ];
+
+        // 批量创建默认时间段
+        await this.prisma.timeSlot.createMany({
+          data: defaultSlots
+        });
+
+        this.logger.log('已初始化默认时间段（09:00-17:00）');
+      }
+    } catch (error) {
+      this.logger.error('初始化默认时间段失败', error);
+    }
   }
 }

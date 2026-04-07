@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/40</span>
+                <span class='fraction'>0/39</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/38</span>
+                <span class='fraction'>0/37</span>
             </div>
         
             
@@ -227,26 +227,7 @@
 <a name='L162'></a><a href='#L162'>162</a>
 <a name='L163'></a><a href='#L163'>163</a>
 <a name='L164'></a><a href='#L164'>164</a>
-<a name='L165'></a><a href='#L165'>165</a>
-<a name='L166'></a><a href='#L166'>166</a>
-<a name='L167'></a><a href='#L167'>167</a>
-<a name='L168'></a><a href='#L168'>168</a>
-<a name='L169'></a><a href='#L169'>169</a>
-<a name='L170'></a><a href='#L170'>170</a>
-<a name='L171'></a><a href='#L171'>171</a>
-<a name='L172'></a><a href='#L172'>172</a>
-<a name='L173'></a><a href='#L173'>173</a>
-<a name='L174'></a><a href='#L174'>174</a>
-<a name='L175'></a><a href='#L175'>175</a>
-<a name='L176'></a><a href='#L176'>176</a>
-<a name='L177'></a><a href='#L177'>177</a>
-<a name='L178'></a><a href='#L178'>178</a>
-<a name='L179'></a><a href='#L179'>179</a>
-<a name='L180'></a><a href='#L180'>180</a>
-<a name='L181'></a><a href='#L181'>181</a>
-<a name='L182'></a><a href='#L182'>182</a>
-<a name='L183'></a><a href='#L183'>183</a>
-<a name='L184'></a><a href='#L184'>184</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L165'></a><a href='#L165'>165</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -271,30 +252,8 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -328,7 +287,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -449,35 +411,13 @@
   Request,
   ParseUUIDPipe,
 } from '@nestjs/common';
-<span class="cstat-no" title="statement not covered" >import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';</span>
+<span class="cstat-no" title="statement not covered" >import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';</span>
 <span class="cstat-no" title="statement not covered" >import { JwtAuthGuard } from '../guards/jwt-auth.guard';</span>
 <span class="cstat-no" title="statement not covered" >import { RolesGuard } from '../guards/roles.guard';</span>
 <span class="cstat-no" title="statement not covered" >import { Roles } from '../decorators';</span>
 <span class="cstat-no" title="statement not covered" >import { WebsocketService } from './websocket.service';</span>
-&nbsp;
-/**
- * 通知创建DTO
- */
-<span class="cstat-no" title="statement not covered" >export class C</span>reateNotificationDto {
-  userId: string;
-  type: 'SMS' | 'EMAIL' | 'WECHAT' | 'PUSH';
-  title: string;
-  content: string;
-  priority?: 'low' | 'medium' | 'high';
-  data?: any;
-  scheduledAt?: Date;
-}
-&nbsp;
-/**
- * 通知查询DTO
- */
-<span class="cstat-no" title="statement not covered" >export class N</span>otificationQueryDto {
-  userId?: string;
-  type?: string[];
-  isRead?: boolean;
-  limit?: number;
-  offset?: number;
-}
+<span class="cstat-no" title="statement not covered" >import { NotificationQueryDto, NotificationCreateDto } from './dto/notification.dto';</span>
+<span class="cstat-no" title="statement not covered" >import { UserRole } from '@/modules/users/dto/user.dto';</span>
 &nbsp;
 /**
  * 通知控制器类
@@ -498,7 +438,7 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
   @Post()
   @ApiOperation({ summary: '创建通知' })
   @ApiResponse({ status: 201, description: '通知创建成功' })
-<span class="fstat-no" title="function not covered" >  async <span class="cstat-no" title="statement not covered" ></span>createNotification(@Body() createNotificationDto: CreateNotificationDto) {</span>
+<span class="fstat-no" title="function not covered" >  async <span class="cstat-no" title="statement not covered" ></span>createNotification(@Body() createNotificationDto: NotificationCreateDto) {</span>
 <span class="cstat-no" title="statement not covered" >    return this.websocketService.createNotification(createNotificationDto);</span>
   }
 &nbsp;
@@ -509,11 +449,14 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
    * @returns 通知列表
    */
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '获取用户通知列表' })
   @ApiResponse({ status: 200, description: '获取成功' })
-<span class="fstat-no" title="function not covered" >  async <span class="cstat-no" title="statement not covered" ></span>getUserNotifications(@Request() req: any, @Query() query: NotificationQueryDto) {</span>
-    const userId = <span class="cstat-no" title="statement not covered" >req.user.userId;</span>
-<span class="cstat-no" title="statement not covered" >    return this.websocketService.getUserNotifications({ ...query, userId });</span>
+  @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: '每页数量', example: 10 })
+<span class="fstat-no" title="function not covered" >  async <span class="cstat-no" title="statement not covered" ></span>getUserNotifications(@Query() query: NotificationQueryDto) {</span>
+<span class="cstat-no" title="statement not covered" >    return this.websocketService.getUserNotifications(query);</span>
   }
 &nbsp;
   /**
@@ -619,7 +562,7 @@ export <span class="cstat-no" title="statement not covered" >class <span class="
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-10-01T07:32:59.006Z
+                at 2026-03-19T12:41:14.020Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

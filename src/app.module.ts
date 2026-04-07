@@ -1,14 +1,20 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
+import { ScheduleModule } from '@nestjs/schedule';
 import { redisStore } from 'cache-manager-redis-store';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
+import { ServicesModule } from './modules/services/services.module';
+import { TimeSlotsModule } from './modules/time-slots/time-slots.module';
+import { EmailModule } from './modules/email/email.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { DatabaseModule } from './common/database/database.module';
 import { FileUploadModule } from './common/file-upload/file-upload.module';
 import { WebsocketModule } from './common/websocket/websocket.module';
+import { HealthModule } from './common/health/health.module';
+import { RetentionModule } from './modules/retention/retention.module';
 
 /**
  * 主应用模块
@@ -19,8 +25,9 @@ import { WebsocketModule } from './common/websocket/websocket.module';
     // 配置模块
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      envFilePath: ['.env.development', '.env.production', '.env'],
     }),
+    ScheduleModule.forRoot(),
     
     // 数据库模块（包含连接池优化）
     DatabaseModule,
@@ -37,7 +44,7 @@ import { WebsocketModule } from './common/websocket/websocket.module';
         host: configService.get('REDIS_HOST', 'localhost'),
         port: configService.get('REDIS_PORT', 6379),
         password: configService.get('REDIS_PASSWORD', ''),
-        ttl: 3600, // 默认缓存1小时
+        ttl: Number(configService.get('REDIS_TTL', 3600)), // 默认缓存1小时
         max: 1000, // 最大缓存项数
       }),
       inject: [ConfigService],
@@ -45,6 +52,7 @@ import { WebsocketModule } from './common/websocket/websocket.module';
     
     // 文件上传模块
     FileUploadModule,
+    HealthModule,
     
     // WebSocket模块（实时通知）
     WebsocketModule,
@@ -53,6 +61,10 @@ import { WebsocketModule } from './common/websocket/websocket.module';
     AuthModule,
     UsersModule,
     BookingsModule,
+    ServicesModule,
+    TimeSlotsModule,
+    EmailModule,
+    RetentionModule,
   ],
 })
 export class AppModule {}

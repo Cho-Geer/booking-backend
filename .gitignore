@@ -1,4 +1,17 @@
 /node_modules
 /dist
+/coverage
 
 /.env
+/docs/*
+!/docs/api-contract.md
+/logs/*
+/.qoder
+/.sfdx
+/.trae
+/.trae-aicc
+/.env.production
+/.env.development
+/.env.test
+/.env.instance*
+/uploads

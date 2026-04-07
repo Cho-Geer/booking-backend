@@ -21,12 +21,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
+import { CreateUserDto, QueryUserDto, ToggleUserStatusDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators/index';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
+import { UserType } from '@prisma/client';
+import { email } from 'zod';
 
 @ApiTags('用户管理')
 @ApiBearerAuth()
@@ -62,7 +64,6 @@ export class UsersController {
   /**
    * 获取用户列表
    * @param query 查询参数
-   * @param pagination 分页参数
    * @returns 用户列表
    */
   @Get()
@@ -70,17 +71,71 @@ export class UsersController {
   @Permissions('users.read')
   @ApiOperation({ summary: '获取用户列表' })
   @ApiQuery({ name: 'name', required: false, description: '用户姓名' })
-  @ApiQuery({ name: 'phoneNumber', required: false, description: '手机号' })
+  @ApiQuery({ name: 'phone', required: false, description: '手机号' })
+  @ApiQuery({ name: 'email', required: false, description: '邮箱' })
   @ApiQuery({ name: 'role', required: false, enum: ['USER', 'ADMIN', 'SUPER_ADMIN'], description: '用户角色' })
   @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], description: '用户状态' })
   @ApiQuery({ name: 'startDate', required: false, description: '开始日期' })
   @ApiQuery({ name: 'endDate', required: false, description: '结束日期' })
-  async findUsers(
-    @Query() query: any,
-    @Query(new ValidationPipe()) pagination: PaginationQueryDto,
-  ): Promise<ApiResponseDto<any>> {
+  @ApiQuery({ name: 'page', required: false, description: '页码' })
+  @ApiQuery({ name: 'limit', required: false, description: '每页数量' })
+  async findUsers(@Query(new ValidationPipe()) myQuery: QueryUserDto): Promise<ApiResponseDto<any>> {
+    // 从 query 中提取分页参数
+    const pagination = new PaginationQueryDto({
+      page: myQuery.page || 1,
+      limit: myQuery.limit || 10
+    });
+    // 从 query 中提取其他查询参数
+    const query = {
+      name: myQuery?.name,
+      phone: myQuery?.phone,
+      email: myQuery?.email,
+      userType: myQuery?.userType,
+      status: myQuery?.status,
+      startDate: myQuery?.startDate,
+      endDate: myQuery?.endDate,
+      sortBy: myQuery?.sortBy,
+      order: myQuery?.order
+    };
     const result = await this.usersService.findUsers(query, pagination);
     return ApiResponseDto.success(result, '获取用户列表成功');
+  }
+
+  /**
+   * 获取当前用户信息
+   * @param currentUser 当前登录用户
+   * @returns 当前用户信息
+   */
+  @Get('profile/me')
+  @ApiOperation({ summary: '获取当前用户信息' })
+  @ApiResponse({
+    status: 200,
+    description: '获取当前用户信息成功',
+    type: UserResponseDto,
+  })
+  async getCurrentUserProfile(
+    @CurrentUser() currentUser: any,
+  ): Promise<ApiResponseDto<UserResponseDto>> {
+    const user = await this.usersService.findUserById(currentUser.id);
+    return ApiResponseDto.success(user, '获取当前用户信息成功');
+  }
+
+  /**
+   * 获取用户统计信息
+   * @param currentUser 当前登录用户
+   * @returns 用户统计信息
+   */
+  @Get('statistics')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Permissions('users.stats')
+  @ApiOperation({ summary: '获取用户统计信息' })
+  @ApiResponse({
+    status: 200,
+    description: '获取用户统计信息成功',
+  })
+  async getStatistics(): Promise<ApiResponseDto<any>> {
+    const statistics = await this.usersService.getUserStats();
+    return ApiResponseDto.success(statistics, '获取统计信息成功');
   }
 
   /**
@@ -105,8 +160,33 @@ export class UsersController {
   }
 
   /**
+   * 切换用户状态
+   * @param id 用户 ID
+   * @param status 新的用户状态
+   * @param currentUser 当前登录用户
+   * @returns 更新后的用户信息
+   */
+  @Put(':id/status')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Permissions('users.update')
+  @ApiOperation({ summary: '切换用户状态' })
+  @ApiResponse({
+    status: 200,
+    description: '用户状态更新成功',
+    type: UserResponseDto,
+  })
+  async toggleUserStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ValidationPipe()) toggleUserStatusDto: ToggleUserStatusDto,
+    @CurrentUser() currentUser: any,
+  ): Promise<ApiResponseDto<UserResponseDto>> {
+    const user = await this.usersService.toggleUserStatus(id, toggleUserStatusDto.status);
+    return ApiResponseDto.success(user, '用户状态更新成功');
+  }
+  
+  /**
    * 更新用户信息
-   * @param id 用户ID
+   * @param id 用户 ID
    * @param updateUserDto 更新数据
    * @param currentUser 当前登录用户
    * @returns 更新后的用户信息
@@ -148,42 +228,5 @@ export class UsersController {
   ): Promise<ApiResponseDto<void>> {
     await this.usersService.deleteUser(id);
     return ApiResponseDto.success(null, '用户删除成功');
-  }
-
-  /**
-   * 获取当前用户信息
-   * @param currentUser 当前登录用户
-   * @returns 当前用户信息
-   */
-  @Get('profile/me')
-  @ApiOperation({ summary: '获取当前用户信息' })
-  @ApiResponse({
-    status: 200,
-    description: '获取当前用户信息成功',
-    type: UserResponseDto,
-  })
-  async getCurrentUserProfile(
-    @CurrentUser() currentUser: any,
-  ): Promise<ApiResponseDto<UserResponseDto>> {
-    const user = await this.usersService.findUserById(currentUser.userId);
-    return ApiResponseDto.success(user, '获取当前用户信息成功');
-  }
-
-  /**
-   * 获取用户统计信息
-   * @param currentUser 当前登录用户
-   * @returns 用户统计信息
-   */
-  @Get('statistics')
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Permissions('users.stats')
-  @ApiOperation({ summary: '获取用户统计信息' })
-  @ApiResponse({
-    status: 200,
-    description: '获取用户统计信息成功',
-  })
-  async getStatistics(): Promise<ApiResponseDto<any>> {
-    const statistics = await this.usersService.getUserStats();
-    return ApiResponseDto.success(statistics, '获取统计信息成功');
   }
 }

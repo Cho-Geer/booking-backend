@@ -11,20 +11,27 @@ import {
   Get,
   Body,
   Query,
+  Res,
+  Req,
   UseGuards,
   UseInterceptors,
   ValidationPipe,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto, SendVerificationCodeDto, RefreshTokenDto, LoginResponseDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, SendVerificationCodeDto, RefreshTokenDto, LoginResponseDto, UserInfoResponseDto } from './dto/auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipJwtAuth } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
+import { Response, Request } from 'express';
+import { randomBytes } from 'crypto';
+import { extractAccessToken, extractRefreshToken } from '../../common/utils/request-token.util';
 
 /**
  * 认证控制器类
@@ -34,7 +41,10 @@ import { TransformInterceptor } from '../../common/interceptors/transform.interc
 @Controller('auth')
 @UseInterceptors(TransformInterceptor)
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * 用户登录
@@ -48,8 +58,12 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '验证码错误' })
   @ApiResponse({ status: 404, description: '用户不存在' })
-  async login(@Body(ValidationPipe) loginDto: LoginDto): Promise<ApiResponseDto<LoginResponseDto>> {
+  async login(
+    @Body(ValidationPipe) loginDto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ApiResponseDto<LoginResponseDto>> {
     const result = await this.authService.login(loginDto);
+    this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '登录成功');
   }
 
@@ -64,8 +78,12 @@ export class AuthController {
   @ApiOperation({ summary: '用户注册', description: '新用户注册' })
   @ApiResponse({ status: 201, description: '注册成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '验证码错误或用户已存在' })
-  async register(@Body(ValidationPipe) registerDto: RegisterDto): Promise<ApiResponseDto<LoginResponseDto>> {
+  async register(
+    @Body(ValidationPipe) registerDto: RegisterDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ApiResponseDto<LoginResponseDto>> {
     const result = await this.authService.register(registerDto);
+    this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '注册成功');
   }
 
@@ -83,7 +101,10 @@ export class AuthController {
   async sendVerificationCode(
     @Body(ValidationPipe) sendVerificationCodeDto: SendVerificationCodeDto,
   ): Promise<ApiResponseDto<void>> {
-    await this.authService.sendVerificationCode(sendVerificationCodeDto.phoneNumber);
+    await this.authService.sendVerificationCode(
+      sendVerificationCodeDto.phoneNumber,
+      sendVerificationCodeDto.type
+    );
     return ApiResponseDto.success(null, '验证码发送成功');
   }
 
@@ -99,9 +120,19 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '令牌刷新成功', type: LoginResponseDto })
   @ApiResponse({ status: 401, description: '刷新令牌无效' })
   async refreshToken(
-    @Body(ValidationPipe) refreshTokenDto: RefreshTokenDto,
+    @Body() body: any, // 暂时放宽类型以支持从Cookie读取
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<ApiResponseDto<LoginResponseDto>> {
-    const result = await this.authService.refreshToken(refreshTokenDto);
+    // 优先从Cookie获取refresh_token，其次从Body获取
+    const refreshToken = request.cookies?.['refresh_token'] || body.refreshToken;
+    
+    if (!refreshToken) {
+      throw new UnauthorizedException('刷新令牌不存在');
+    }
+
+    const result = await this.authService.refreshToken({ refreshToken });
+    this.setAuthCookies(response, result.accessToken, result.refreshToken);
     return ApiResponseDto.success(result, '令牌刷新成功');
   }
 
@@ -116,8 +147,18 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '用户登出', description: '用户登出系统' })
   @ApiResponse({ status: 200, description: '登出成功' })
-  async logout(@CurrentUser() currentUser: any): Promise<ApiResponseDto<void>> {
-    await this.authService.logout(currentUser.userId);
+  async logout(
+    @CurrentUser() currentUser: any,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ApiResponseDto<void>> {
+    const refreshToken = extractRefreshToken(request);
+    const accessToken = extractAccessToken(request);
+    await this.authService.logout(currentUser.id, refreshToken, accessToken);
+    // 清除Cookie
+    response.clearCookie('access_token');
+    response.clearCookie('refresh_token');
+    response.clearCookie('csrf_token');
     return ApiResponseDto.success(null, '登出成功');
   }
 
@@ -131,8 +172,8 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取用户信息', description: '获取当前登录用户的详细信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getProfile(@CurrentUser() currentUser: any): Promise<ApiResponseDto<any>> {
-    const user = await this.authService.getUserProfile(currentUser.userId);
+  async getProfile(@CurrentUser() currentUser: any): Promise<ApiResponseDto<UserInfoResponseDto>> {
+    const user = await this.authService.getUserProfile(currentUser.id);
     return ApiResponseDto.success(user, '获取用户信息成功');
   }
 
@@ -150,7 +191,7 @@ export class AuthController {
   async verifyToken(@CurrentUser() currentUser: any): Promise<ApiResponseDto<any>> {
     return ApiResponseDto.success(
       {
-        userId: currentUser.userId,
+        userId: currentUser.id,
         valid: true,
         expiresAt: currentUser.exp * 1000, // 转换为毫秒时间戳
       },
@@ -171,5 +212,70 @@ export class AuthController {
   async checkPhoneNumber(@Query('phoneNumber') phoneNumber: string): Promise<ApiResponseDto<{ exists: boolean }>> {
     const exists = await this.authService.checkPhoneNumberExists(phoneNumber);
     return ApiResponseDto.success({ exists }, '检查完成');
+  }
+
+  private setAuthCookies(response: Response, accessToken: string, refreshToken: string): void {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const configuredSameSite = (this.configService.get<string>('COOKIE_SAME_SITE') || 'lax').toLowerCase();
+    const sameSite = configuredSameSite === 'none' ? 'none' : 'lax';
+    const secure = sameSite === 'none' ? true : isProduction;
+    const cookieDomain = this.configService.get<string>('COOKIE_DOMAIN');
+    const accessTokenMaxAgeSeconds = this.resolveCookieMaxAgeSeconds(process.env.JWT_EXPIRES_IN, 3600);
+    const refreshTokenMaxAgeSeconds = this.resolveCookieMaxAgeSeconds(process.env.JWT_REFRESH_EXPIRES_IN, 604800);
+    const cookieBaseOptions: {
+      httpOnly: true;
+      secure: boolean;
+      sameSite: 'none' | 'lax';
+      path: '/';
+      domain?: string;
+    } = {
+      httpOnly: true,
+      secure,
+      sameSite,
+      path: '/',
+    };
+    if (cookieDomain) {
+      cookieBaseOptions.domain = cookieDomain;
+    }
+
+    response.cookie('access_token', accessToken, {
+      ...cookieBaseOptions,
+      maxAge: accessTokenMaxAgeSeconds * 1000,
+    });
+    response.cookie('refresh_token', refreshToken, {
+      ...cookieBaseOptions,
+      maxAge: refreshTokenMaxAgeSeconds * 1000,
+    });
+    response.cookie('csrf_token', randomBytes(32).toString('hex'), {
+      httpOnly: false,
+      secure,
+      sameSite,
+      path: '/',
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
+      maxAge: refreshTokenMaxAgeSeconds * 1000,
+    });
+  }
+
+  private resolveCookieMaxAgeSeconds(value: string | undefined, defaultValue: number): number {
+    if (!value) {
+      return defaultValue;
+    }
+
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber)) {
+      return asNumber;
+    }
+
+    const matched = value.trim().match(/^(\d+)([smhd])$/i);
+    if (!matched) {
+      return defaultValue;
+    }
+
+    const amount = Number(matched[1]);
+    const unit = matched[2].toLowerCase();
+    if (unit === 's') return amount;
+    if (unit === 'm') return amount * 60;
+    if (unit === 'h') return amount * 3600;
+    return amount * 86400;
   }
 }
