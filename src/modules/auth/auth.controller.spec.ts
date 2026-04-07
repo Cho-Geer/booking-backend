@@ -38,12 +38,31 @@ describe('AuthController', () => {
     const response = {
       clearCookie: jest.fn(),
     } as unknown as Response;
+    
+    // 模拟ConfigService返回值
+    mockConfigService.get.mockImplementation((key: string) => {
+      if (key === 'COOKIE_SAME_SITE') return 'lax';
+      if (key === 'COOKIE_DOMAIN') return undefined;
+      return undefined;
+    });
 
     await controller.logout({ id: 'user-1' }, request, response);
 
     expect(mockAuthService.logout).toHaveBeenCalledWith('user-1', null, 'access-from-header');
-    expect(response.clearCookie).toHaveBeenCalledWith('access_token');
-    expect(response.clearCookie).toHaveBeenCalledWith('refresh_token');
-    expect(response.clearCookie).toHaveBeenCalledWith('csrf_token');
+    expect(response.clearCookie).toHaveBeenCalledWith('access_token', {
+      path: '/',
+      secure: false,
+      sameSite: 'lax',
+    });
+    expect(response.clearCookie).toHaveBeenCalledWith('refresh_token', {
+      path: '/',
+      secure: false,
+      sameSite: 'lax',
+    });
+    expect(response.clearCookie).toHaveBeenCalledWith('csrf_token', {
+      path: '/',
+      secure: false,
+      sameSite: 'lax',
+    });
   });
 });

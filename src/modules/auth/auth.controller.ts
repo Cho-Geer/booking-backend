@@ -155,10 +155,30 @@ export class AuthController {
     const refreshToken = extractRefreshToken(request);
     const accessToken = extractAccessToken(request);
     await this.authService.logout(currentUser.id, refreshToken, accessToken);
-    // 清除Cookie
-    response.clearCookie('access_token');
-    response.clearCookie('refresh_token');
-    response.clearCookie('csrf_token');
+    
+    // 清除Cookie - 使用与setAuthCookies一致的选项
+    const isProduction = process.env.NODE_ENV === 'production';
+    const configuredSameSite = (this.configService.get<string>('COOKIE_SAME_SITE') || 'lax').toLowerCase();
+    const sameSite = configuredSameSite === 'none' ? 'none' : 'lax';
+    const secure = sameSite === 'none' ? true : isProduction;
+    const cookieDomain = this.configService.get<string>('COOKIE_DOMAIN');
+    const clearCookieOptions: {
+      path: string;
+      secure: boolean;
+      sameSite: 'none' | 'lax';
+      domain?: string;
+    } = {
+      path: '/',
+      secure,
+      sameSite,
+    };
+    if (cookieDomain) {
+      clearCookieOptions.domain = cookieDomain;
+    }
+    
+    response.clearCookie('access_token', clearCookieOptions);
+    response.clearCookie('refresh_token', clearCookieOptions);
+    response.clearCookie('csrf_token', clearCookieOptions);
     return ApiResponseDto.success(null, '登出成功');
   }
 

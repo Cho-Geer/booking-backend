@@ -23,5 +23,17 @@ export function extractAccessToken(request: Request): string | null {
 }
 
 export function extractRefreshToken(request: Request): string | null {
-  return (request as Request & { cookies?: Record<string, string> }).cookies?.refresh_token ?? null;
+  // 优先从cookie读取，其次从请求体读取（与refresh接口逻辑一致）
+  const cookieToken = (request as Request & { cookies?: Record<string, string> }).cookies?.refresh_token;
+  if (cookieToken) {
+    return cookieToken;
+  }
+  
+  // 尝试从请求体获取（对于API/移动端客户端）
+  const body = request.body as any;
+  if (body && typeof body === 'object' && body.refreshToken) {
+    return body.refreshToken;
+  }
+  
+  return null;
 }
