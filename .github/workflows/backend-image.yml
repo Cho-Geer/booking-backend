@@ -106,18 +106,68 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: Run basic test (PR - local image)
+      - name: Start test services (PostgreSQL + Redis)
+        if: github.event_name == 'pull_request'
+        run: |
+          docker network create test-network
+          docker run -d --name test-postgres \
+            --network test-network \
+            -e POSTGRES_USER=test \
+            -e POSTGRES_PASSWORD=test \
+            -e POSTGRES_DB=booking_test \
+            -p 5432:5432 \
+            postgres:16
+          docker run -d --name test-redis \
+            --network test-network \
+            -p 6379:6379 \
+            redis:7-alpine
+          sleep 15
+
+      - name: Run basic test (PR - local image with test services)
         if: github.event_name == 'pull_request'
         run: |
           TEST_IMAGE="${{ env.LOCAL_TEST_IMAGE }}"
           echo "Running PR test with local image: $TEST_IMAGE"
-          docker run -d --name backend-test -p 3001:3001 $TEST_IMAGE
-          sleep 10
+          
+          docker run -d --name backend-test \
+            --network test-network \
+            -p 3001:3001 \
+            -e DATABASE_URL=postgresql://test:test@test-postgres:5432/booking_test \
+            -e REDIS_HOST=test-redis \
+            -e REDIS_PORT=6379 \
+            -e JWT_SECRET=test-secret-key-for-ci-only \
+            -e NODE_ENV=test \
+            $TEST_IMAGE
+          
+          sleep 20
           curl -f http://localhost:3001/v1/health || (docker logs backend-test && exit 1)
+          
           docker stop backend-test
           docker rm backend-test
+          docker stop test-postgres
+          docker rm test-postgres
+          docker stop test-redis
+          docker rm test-redis
+          docker network rm test-network
 
-      - name: Run basic test (Push - pull remote image)
+      - name: Start test services (PostgreSQL + Redis) for Push test
+        if: github.event_name != 'pull_request'
+        run: |
+          docker network create test-network
+          docker run -d --name test-postgres \
+            --network test-network \
+            -e POSTGRES_USER=test \
+            -e POSTGRES_PASSWORD=test \
+            -e POSTGRES_DB=booking_test \
+            -p 5432:5432 \
+            postgres:16
+          docker run -d --name test-redis \
+            --network test-network \
+            -p 6379:6379 \
+            redis:7-alpine
+          sleep 15
+
+      - name: Run basic test (Push - pull remote image with GitHub Secrets)
         if: github.event_name != 'pull_request'
         run: |
           # Extract the first tag from metadata
@@ -128,9 +178,25 @@ jobs:
           # Pull the single platform (linux/amd64) image for testing
           docker pull --platform linux/amd64 $TEST_IMAGE
           
-          # Run the test container
-          docker run -d --name backend-test -p 3001:3001 --platform linux/amd64 $TEST_IMAGE
-          sleep 10
+          # Run the test container with GitHub Secrets
+          docker run -d --name backend-test \
+            --network test-network \
+            -p 3001:3001 \
+            --platform linux/amd64 \
+            -e DATABASE_URL=${{ secrets.TEST_DATABASE_URL }} \
+            -e REDIS_HOST=${{ secrets.TEST_REDIS_HOST }} \
+            -e REDIS_PORT=${{ secrets.TEST_REDIS_PORT }} \
+            -e JWT_SECRET=${{ secrets.TEST_JWT_SECRET }} \
+            -e NODE_ENV=test \
+            $TEST_IMAGE
+          
+          sleep 20
           curl -f http://localhost:3001/v1/health || (docker logs backend-test && exit 1)
+          
           docker stop backend-test
           docker rm backend-test
+          docker stop test-postgres
+          docker rm test-postgres
+          docker stop test-redis
+          docker rm test-redis
+          docker network rm test-network
