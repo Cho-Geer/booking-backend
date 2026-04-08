@@ -4,8 +4,8 @@ on:
   pull_request:
   push:
     branches:
-      - main
-      - dev
+      - master
+      - develop
 
 jobs:
   quality-gate:
