@@ -17,6 +17,7 @@ env:
   REGISTRY: docker.io
   IMAGE_NAME: docker.io/cho-geer/booking-backend
   MIGRATION_IMAGE_NAME: docker.io/cho-geer/booking-backend-migration
+  LOCAL_TEST_IMAGE: booking-backend:test
 
 jobs:
   build-and-push:
@@ -54,19 +55,22 @@ jobs:
             type=sha,prefix=,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
 
-      - name: Build and push main backend image
+      - name: Build main backend image (and load locally)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ env.LOCAL_TEST_IMAGE }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+          load: true
 
-      - name: Build and push migration image
+      - name: Build migration image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -80,7 +84,14 @@ jobs:
 
       - name: Run basic test
         run: |
-          docker run -d --name backend-test -p 3001:3001 ${{ env.IMAGE_NAME }}:latest
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TEST_IMAGE="${{ env.LOCAL_TEST_IMAGE }}"
+            echo "Running PR test with local image: $TEST_IMAGE"
+          else
+            TEST_IMAGE="${{ env.IMAGE_NAME }}:latest"
+            echo "Running push test with remote image: $TEST_IMAGE"
+          fi
+          docker run -d --name backend-test -p 3001:3001 $TEST_IMAGE
           sleep 10
           curl -f http://localhost:3001/v1/health || (docker logs backend-test && exit 1)
           docker stop backend-test
