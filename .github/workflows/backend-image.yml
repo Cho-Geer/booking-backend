@@ -1,0 +1,120 @@
+name: Backend Docker Image
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:  # Manual trigger
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: docker.io/cho-geer/booking-backend
+  MIGRATION_IMAGE_NAME: docker.io/cho-geer/booking-backend-migration
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.IMAGE_NAME }}
+            ${{ env.MIGRATION_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push main backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push migration image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.migrate
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  test-image:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build main image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: booking-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build migration image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.migrate
+          push: false
+          tags: booking-backend-migration:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run basic test
+        run: |
+          docker run -d --name backend-test -p 3001:3001 booking-backend:test
+          sleep 10
+          curl -f http://localhost:3001/v1/health || (docker logs backend-test && exit 1)
+          docker stop backend-test
+          docker rm backend-test
