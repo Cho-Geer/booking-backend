@@ -3,14 +3,14 @@ name: Backend Docker Image
 on:
   push:
     branches:
-      - main
-      - dev
+      - master
+      - develop
     tags:
       - 'v*'
   pull_request:
     branches:
-      - main
-      - dev
+      - master
+      - develop
   workflow_dispatch:  # Manual trigger
 
 env:
@@ -53,7 +53,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Build and push main backend image
         uses: docker/build-push-action@v6
