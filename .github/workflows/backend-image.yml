@@ -40,13 +40,24 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata for Docker
-        id: meta
+      - name: Extract metadata for main backend image
+        id: meta-main
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.IMAGE_NAME }}
-            ${{ env.MIGRATION_IMAGE_NAME }}
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+
+      - name: Extract metadata for migration image
+        id: meta-migration
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.MIGRATION_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -63,7 +74,7 @@ jobs:
           file: ./Dockerfile
           push: false
           tags: ${{ env.LOCAL_TEST_IMAGE }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: ${{ steps.meta-main.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -76,8 +87,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-main.outputs.tags }}
+          labels: ${{ steps.meta-main.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
@@ -89,8 +100,8 @@ jobs:
           context: .
           file: ./Dockerfile.migrate
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-migration.outputs.tags }}
+          labels: ${{ steps.meta-migration.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
@@ -110,7 +121,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           # Extract the first tag from metadata
-          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          FIRST_TAG=$(echo "${{ steps.meta-main.outputs.tags }}" | head -n 1)
           TEST_IMAGE="${FIRST_TAG:-${{ env.IMAGE_NAME }}:latest}"
           echo "Running Push test with remote image: $TEST_IMAGE"
           
