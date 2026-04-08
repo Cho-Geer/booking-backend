@@ -55,43 +55,70 @@ jobs:
             type=sha,prefix=,format=short
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
 
-      - name: Build main backend image (and load locally)
+      - name: Build main backend image (PR - single platform, load locally)
+        if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ env.LOCAL_TEST_IMAGE }}
+          push: false
+          tags: ${{ env.LOCAL_TEST_IMAGE }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           load: true
 
-      - name: Build migration image
+      - name: Build main backend image (Push - multi-platform, push to registry)
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.migrate
-          push: ${{ github.event_name != 'pull_request' }}
+          file: ./Dockerfile
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: Run basic test
+      - name: Build migration image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.migrate
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Run basic test (PR - local image)
+        if: github.event_name == 'pull_request'
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TEST_IMAGE="${{ env.LOCAL_TEST_IMAGE }}"
-            echo "Running PR test with local image: $TEST_IMAGE"
-          else
-            TEST_IMAGE="${{ env.IMAGE_NAME }}:latest"
-            echo "Running push test with remote image: $TEST_IMAGE"
-          fi
+          TEST_IMAGE="${{ env.LOCAL_TEST_IMAGE }}"
+          echo "Running PR test with local image: $TEST_IMAGE"
           docker run -d --name backend-test -p 3001:3001 $TEST_IMAGE
+          sleep 10
+          curl -f http://localhost:3001/v1/health || (docker logs backend-test && exit 1)
+          docker stop backend-test
+          docker rm backend-test
+
+      - name: Run basic test (Push - pull remote image)
+        if: github.event_name != 'pull_request'
+        run: |
+          # Extract the first tag from metadata
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          TEST_IMAGE="${FIRST_TAG:-${{ env.IMAGE_NAME }}:latest}"
+          echo "Running Push test with remote image: $TEST_IMAGE"
+          
+          # Pull the single platform (linux/amd64) image for testing
+          docker pull --platform linux/amd64 $TEST_IMAGE
+          
+          # Run the test container
+          docker run -d --name backend-test -p 3001:3001 --platform linux/amd64 $TEST_IMAGE
           sleep 10
           curl -f http://localhost:3001/v1/health || (docker logs backend-test && exit 1)
           docker stop backend-test
