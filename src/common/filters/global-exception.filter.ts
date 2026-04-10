@@ -17,6 +17,7 @@ import { Request, Response } from 'express';
 import { ApiResponseDto } from '../dto/api-response.dto';
 import { BusinessException } from '../exceptions/business.exceptions';
 import { Prisma } from '@prisma/client';
+import { writeStructuredLog } from '../logging/structured-log.util';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -91,8 +92,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
       // 设置响应状态码和响应时间
       response.status(status);
-      // 使用当前时间计算响应时间，避免依赖request.startTime
-      response.setHeader('X-Response-Time', `${Date.now() - Date.now()}ms`);
+      response.setHeader('X-Response-Time', `${this.getDurationMs(request)}ms`);
+      response.setHeader('X-Request-Id', this.getRequestId(request));
+      responseData.requestId = this.getRequestId(request);
       
       // 发送响应
       response.json(responseData);
@@ -103,7 +105,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         code: HttpStatus.INTERNAL_SERVER_ERROR,
         message: '服务器内部错误',
-        requestId: request.headers['x-request-id'] as string || 'unknown',
+        requestId: this.getRequestId(request),
         timestamp: new Date().toISOString(),
       });
     }
@@ -114,11 +116,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
    */
   private logException(exception: unknown, request: Request) {
     const logData = {
+      requestId: this.getRequestId(request),
       url: request.url,
       method: request.method,
       ip: request.ip,
       userAgent: request.get('user-agent'),
       timestamp: new Date().toISOString(),
+      durationMs: this.getDurationMs(request),
       error: exception instanceof Error ? {
         name: exception.name,
         message: exception.message,
@@ -128,18 +132,39 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof BusinessException) {
       this.logger.warn(`Business exception: ${exception.message}`, logData);
+      writeStructuredLog('warn', 'http_exception', GlobalExceptionFilter.name, logData);
     } else if (exception instanceof HttpException) {
       const status = exception.getStatus();
       if (status >= 500) {
         this.logger.error(`HTTP exception (${status}): ${exception.message}`, logData);
+        writeStructuredLog('error', 'http_exception', GlobalExceptionFilter.name, {
+          status,
+          ...logData,
+        });
       } else {
         this.logger.warn(`HTTP exception (${status}): ${exception.message}`, logData);
+        writeStructuredLog('warn', 'http_exception', GlobalExceptionFilter.name, {
+          status,
+          ...logData,
+        });
       }
     } else if (this.isPrismaException(exception)) {
       this.logger.error(`Database exception: ${exception}`, logData);
+      writeStructuredLog('error', 'database_exception', GlobalExceptionFilter.name, logData);
     } else {
       this.logger.error(`Unknown exception: ${exception}`, logData);
+      writeStructuredLog('error', 'unknown_exception', GlobalExceptionFilter.name, logData);
     }
+  }
+
+  private getDurationMs(request: Request): number {
+    const startTime = (request as Request & { startTime?: number }).startTime;
+    return startTime ? Date.now() - startTime : 0;
+  }
+
+  private getRequestId(request: Request): string {
+    const requestId = (request as Request & { requestId?: string }).requestId;
+    return requestId ?? (request.headers['x-request-id'] as string) ?? 'unknown';
   }
 
   /**

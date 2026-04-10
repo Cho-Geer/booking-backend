@@ -5,7 +5,7 @@
  * @since 2024
  */
 
-import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, Logger, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 
@@ -51,6 +51,7 @@ export class RolesGuard implements CanActivate {
       this.logger.warn(
         `Access denied: User ${user.id} lacks required roles ${requiredRoles.join(', ')}`
       );
+      throw new ForbiddenException('仅管理员可操作');
     }
 
     return hasRole;

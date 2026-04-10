@@ -8,7 +8,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Controller } from '@nestjs/common';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, UserType, UserStatus } from './dto/user.dto';
+import { CreateUserDto, ToggleUserStatusDto, UpdateUserDto, UserType, UserStatus } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { BusinessException } from '../../common/exceptions/business.exceptions';
 
@@ -20,6 +20,7 @@ const mockUsersService = {
   updateUser: jest.fn(),
   deleteUser: jest.fn(),
   getUserStats: jest.fn(),
+  toggleUserStatus: jest.fn(),
 };
 
 describe('UsersController', () => {
@@ -58,7 +59,7 @@ describe('UsersController', () => {
       }
 
       async getCurrentUserProfile(currentUser: any): Promise<ApiResponseDto<any>> {
-        const user = await this.usersService.findUserById(currentUser.userId);
+        const user = await this.usersService.findUserById(currentUser.id);
         return ApiResponseDto.success(user, '获取当前用户信息成功');
       }
 
@@ -71,6 +72,11 @@ describe('UsersController', () => {
         // 模拟头像更新逻辑
         const user = await this.usersService.updateUser('test-user-id', {});
         return ApiResponseDto.success(user, '头像更新成功');
+      }
+
+      async toggleUserStatus(id: string, toggleUserStatusDto: ToggleUserStatusDto): Promise<ApiResponseDto<any>> {
+        const user = await this.usersService.toggleUserStatus(id, toggleUserStatusDto.status);
+        return ApiResponseDto.success(user, '用户状态更新成功');
       }
     }
 
@@ -117,7 +123,7 @@ describe('UsersController', () => {
     };
 
     const currentUser = {
-      userId: 'admin-1',
+      id: 'admin-1',
       role: 'ADMIN',
     };
 
@@ -234,7 +240,7 @@ describe('UsersController', () => {
     };
 
     const currentUser = {
-      userId: 'admin-1',
+      id: 'admin-1',
       role: 'ADMIN',
     };
 
@@ -263,7 +269,7 @@ describe('UsersController', () => {
   describe('deleteUser', () => {
     const userId = '1';
     const currentUser = {
-      userId: 'admin-1',
+      id: 'admin-1',
       role: 'ADMIN',
     };
 
@@ -281,7 +287,7 @@ describe('UsersController', () => {
 
   describe('getCurrentUserProfile', () => {
     const currentUser = {
-      userId: '1',
+      id: '1',
       role: 'USER',
     };
 
@@ -298,10 +304,30 @@ describe('UsersController', () => {
 
       const result = await controller.getCurrentUserProfile(currentUser);
 
-      expect(service.findUserById).toHaveBeenCalledWith(currentUser.userId);
+      expect(service.findUserById).toHaveBeenCalledWith(currentUser.id);
       expect(result.code).toEqual(200);
       expect(result.message).toEqual('获取当前用户信息成功');
       expect(result.data).toEqual(mockProfile);
+    });
+  });
+
+  describe('toggleUserStatus', () => {
+    it('should call service with validated dto status', async () => {
+      const userId = '1';
+      const toggleDto: ToggleUserStatusDto = { status: UserStatus.INACTIVE };
+      const updatedUser = {
+        id: '1',
+        name: '测试用户',
+        status: UserStatus.INACTIVE,
+      };
+
+      mockUsersService.toggleUserStatus.mockResolvedValue(updatedUser);
+
+      const result = await controller.toggleUserStatus(userId, toggleDto);
+
+      expect(service.toggleUserStatus).toHaveBeenCalledWith(userId, UserStatus.INACTIVE);
+      expect(result.message).toEqual('用户状态更新成功');
+      expect(result.data).toEqual(updatedUser);
     });
   });
 

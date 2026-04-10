@@ -13,7 +13,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/index';
 import { UserRole } from '../users/dto/user.dto';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('时间段管理')
 @ApiBearerAuth()
@@ -48,6 +49,21 @@ export class TimeSlotsController {
   @ApiResponse({ status: 200, description: '获取成功' })
   async findAll(@Query() query: TimeSlotQueryDto) {
     return this.timeSlotsService.findAll(query);
+  }
+
+  /**
+   * 获取时间段可用性
+   * @param query 可用性查询参数
+   * @returns 时间段可用性信息
+   */
+  @Get('available-slots')
+  @ApiOperation({ summary: '获取时间段可用性', description: '获取指定日期的时间段可用性信息' })
+  @ApiResponse({ status: 200, description: '获取成功' })
+  @ApiResponse({ status: 400, description: '参数错误' })
+  @ApiQuery({ name: 'date', required: true, description: '日期 (YYYY-MM-DD)', example: '2024-01-15' })
+  async getAvailability(@Query('date') date: string): Promise<ApiResponseDto> {
+    const result = await this.timeSlotsService.getAvailability({date});
+    return ApiResponseDto.success(result);
   }
 
   /**
@@ -96,18 +112,5 @@ export class TimeSlotsController {
   @ApiResponse({ status: 403, description: '无权限' })
   async remove(@Param('id') id: string) {
     return this.timeSlotsService.remove(id);
-  }
-
-  /**
-   * 获取时间段可用性
-   * @param availabilityDto 可用性查询参数
-   * @returns 时间段可用性信息
-   */
-  @Get('availability')
-  @ApiOperation({ summary: '获取时间段可用性', description: '获取指定日期的时间段可用性信息' })
-  @ApiResponse({ status: 200, description: '获取成功' })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  async getAvailability(@Query() availabilityDto: TimeSlotAvailabilityDto) {
-    return this.timeSlotsService.getAvailability(availabilityDto);
   }
 }

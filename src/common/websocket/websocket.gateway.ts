@@ -62,13 +62,28 @@ export interface ChatMessage {
  * 处理WebSocket连接、消息推送和通知管理
  */
 @WebSocketGateway({
-  port: 3001,
-  namespace: '/ws',
+  // 动态端口，与 HTTP 服务器使用相同端口
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
+    origin: function (origin: string, callback: (err: Error | null, allow?: boolean) => void) {
+      // 明确指定允许的端口
+      const allowedPorts = ['3000', '3002', '3003'];
+      if (origin && allowedPorts.some(port => origin === `http://localhost:${port}`)) {
+        callback(null, true);
+        return;
+      }
+      
+      // 检查是否在允许的列表中
+      const allowedOrigins = process.env.FRONTEND_URLS?.split(',') || 
+                            [process.env.FRONTEND_URL, 'http://localhost:3000'];
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   },
+  namespace: '/ws',
   transports: ['websocket', 'polling'],
 })
 export class WebsocketGateway

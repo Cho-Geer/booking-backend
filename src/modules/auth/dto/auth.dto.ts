@@ -6,7 +6,16 @@
  */
 
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsPhoneNumber, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsPhoneNumber, IsOptional, IsEmail, IsEnum } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+/**
+ * 验证码类型枚举
+ */
+export enum VerificationCodeType {
+  LOGIN = 'login',
+  REGISTER = 'register',
+}
 
 /**
  * 用户登录请求DTO
@@ -37,6 +46,13 @@ export class RegisterDto {
   @IsPhoneNumber('CN', { message: '请输入有效的手机号' })
   phoneNumber: string;
 
+  @ApiProperty({ description: '邮箱', example: 'zhangsan@example.com', required: false })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsString({ message: '邮箱必须是字符串' })
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email?: string;
+
   @ApiProperty({ description: '验证码', example: '123456' })
   @IsNotEmpty({ message: '验证码不能为空' })
   @IsString({ message: '验证码必须是字符串' })
@@ -51,6 +67,11 @@ export class SendVerificationCodeDto {
   @IsNotEmpty({ message: '手机号不能为空' })
   @IsPhoneNumber('CN', { message: '请输入有效的手机号' })
   phoneNumber: string;
+
+  @ApiProperty({ description: '验证码类型', enum: VerificationCodeType, example: 'login' })
+  @IsNotEmpty({ message: '验证码类型不能为空' })
+  @IsEnum(VerificationCodeType, { message: '类型必须是 login 或 register' })
+  type: VerificationCodeType;
 }
 
 /**
@@ -101,6 +122,9 @@ export class UserInfoResponseDto {
 
   @ApiProperty({ description: '手机号' })
   phoneNumber: string;
+
+  @ApiProperty({ description: '邮箱' })
+  email?: string;
 
   @ApiProperty({ description: '用户角色' })
   role: string;

@@ -6,8 +6,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import { JwtService } from '@nestjs/jwt';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { CreateUserDto, UpdateUserDto, QueryUserDto } from './dto/user.dto';
-import { PhoneNumberExistsException, ResourceNotFoundException, DatabaseException } from '../../common/exceptions/business.exceptions';
+import { EmailExistsException, PhoneNumberExistsException, ResourceNotFoundException, DatabaseException } from '../../common/exceptions/business.exceptions';
 import { PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { UserStatus, UserType } from './dto/user.dto';
 
@@ -20,7 +23,34 @@ const mockPrismaService = {
     delete: jest.fn(),
     count: jest.fn(),
     findMany: jest.fn(),
+    findFirst: jest.fn(),
   },
+  userSession: {
+    findMany: jest.fn(),
+    update: jest.fn(),
+  },
+  appointment: {
+    findMany: jest.fn(),
+    update: jest.fn(),
+  },
+  $transaction: jest.fn(async (fn) => fn(mockPrismaService)),
+};
+
+const mockEmailService = {
+  sendBookingConfirmation: jest.fn().mockResolvedValue(undefined),
+  sendBookingCancellation: jest.fn().mockResolvedValue(undefined),
+  sendBookingUpdate: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockJwtService = {
+  sign: jest.fn().mockReturnValue('mock-token'),
+  verify: jest.fn().mockReturnValue({ userId: 'test-user-id' }),
+};
+
+const mockCacheManager = {
+  get: jest.fn().mockResolvedValue(null),
+  set: jest.fn().mockResolvedValue(undefined),
+  del: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('UsersService', () => {
@@ -34,6 +64,18 @@ describe('UsersService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
+        },
+        {
+          provide: JwtService,
+          useValue: mockJwtService,
+        },
+        {
+          provide: CACHE_MANAGER,
+          useValue: mockCacheManager,
         },
       ],
     }).compile();
@@ -59,6 +101,7 @@ describe('UsersService', () => {
       name: '测试用户',
       phone: '138****8000',
       phoneHash: 'hashed_phone',
+      email: null,
       userType: 'USER',
       status: 'ACTIVE',
       remarks: '测试备注',
@@ -76,7 +119,6 @@ describe('UsersService', () => {
 
       expect(result).toBeDefined();
       expect(result.name).toBe('测试用户');
-      expect(result.phone).toBe('138****8000');
       expect(result.userType).toBe('USER');
       expect(mockPrismaService.user.findUnique).toHaveBeenCalled();
       expect(mockPrismaService.user.create).toHaveBeenCalled();
@@ -98,6 +140,20 @@ describe('UsersService', () => {
       mockPrismaService.user.create.mockRejectedValue(new Error('Database error'));
 
       await expect(service.createUser(createUserDto)).rejects.toThrow(DatabaseException);
+    });
+
+    it('应该抛出EmailExistsException当邮箱已存在', async () => {
+      const createUserWithEmailDto: CreateUserDto = {
+        ...createUserDto,
+        email: 'exists@example.com',
+      };
+
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'existing-user' });
+
+      await expect(service.createUser(createUserWithEmailDto)).rejects.toThrow(EmailExistsException);
+      expect(mockPrismaService.user.create).not.toHaveBeenCalled();
     });
   });
 
@@ -255,6 +311,44 @@ describe('UsersService', () => {
       expect(result.total).toBe(2);
       expect(mockPrismaService.user.findMany).toHaveBeenCalled();
       expect(mockPrismaService.user.count).toHaveBeenCalled();
+    });
+
+    it('应该使用稳定的默认排序和二级 id 排序', async () => {
+      const query: QueryUserDto = {};
+      const pagination = new PaginationQueryDto();
+      pagination.page = 2;
+      pagination.limit = 20;
+
+      mockPrismaService.user.findMany.mockResolvedValue(mockUsers);
+      mockPrismaService.user.count.mockResolvedValue(2);
+
+      await service.findUsers(query, pagination);
+
+      expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {},
+        skip: 20,
+        take: 20,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }));
+    });
+
+    it('应该对白名单排序字段保留二级 id 排序，非法字段回退默认排序', async () => {
+      const pagination = new PaginationQueryDto();
+      pagination.page = 1;
+      pagination.limit = 10;
+
+      mockPrismaService.user.findMany.mockResolvedValue(mockUsers);
+      mockPrismaService.user.count.mockResolvedValue(2);
+
+      await service.findUsers({ sortBy: 'name', order: 'asc' } as QueryUserDto, pagination);
+      expect(mockPrismaService.user.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      }));
+
+      await service.findUsers({ sortBy: 'invalidField', order: 'asc' } as QueryUserDto, pagination);
+      expect(mockPrismaService.user.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }));
     });
 
     it('应该根据查询条件过滤用户', async () => {

@@ -7,6 +7,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { TimeSlotsService } from '../time-slots/time-slots.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
@@ -31,12 +32,14 @@ describe('BookingsController', () => {
     id: 'user-123',
     email: 'test@example.com',
     roles: [UserRole.USER],
+    userType: 'CUSTOMER',
   };
 
   const mockAdmin = {
     id: 'admin-123',
     email: 'admin@example.com',
     roles: [UserRole.ADMIN],
+    userType: 'ADMIN',
   };
 
   const mockAppointment: AppointmentResponseDto = {
@@ -85,6 +88,10 @@ describe('BookingsController', () => {
     getBookingStats: jest.fn(),
   };
 
+  const mockTimeSlotsService = {
+    getAvailability: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BookingsController],
@@ -92,6 +99,10 @@ describe('BookingsController', () => {
         {
           provide: BookingsService,
           useValue: mockBookingsService,
+        },
+        {
+          provide: TimeSlotsService,
+          useValue: mockTimeSlotsService,
         },
       ],
     })
@@ -127,8 +138,10 @@ describe('BookingsController', () => {
 
       const result = await controller.create(createDto, mockUser);
 
-      expect(service.createBooking).toHaveBeenCalledWith(createDto);
-      expect(result).toEqual(mockAppointment);
+      expect(service.createBooking).toHaveBeenCalledWith(createDto, mockUser.id);
+      expect(result.data).toEqual(mockAppointment);
+      expect(result.message).toBe('创建预约成功');
+      expect(result.code).toBe(200);
     });
 
     it('应该为没有userId的DTO设置当前用户ID', async () => {
@@ -145,7 +158,7 @@ describe('BookingsController', () => {
       await controller.create(createDto, mockUser);
 
       expect(createDto.userId).toBe(mockUser.id);
-      expect(service.createBooking).toHaveBeenCalledWith(createDto);
+      expect(service.createBooking).toHaveBeenCalledWith(createDto, mockUser.id);
     });
   });
 
@@ -168,7 +181,7 @@ describe('BookingsController', () => {
 
       const result = await controller.findAll(query, mockAdmin);
 
-      expect(service.findBookings).toHaveBeenCalledWith(query);
+      expect(service.findBookings).toHaveBeenCalledWith(query, mockAdmin.id);
       expect(result).toEqual(mockResult);
     });
 
@@ -191,7 +204,7 @@ describe('BookingsController', () => {
       await controller.findAll(query, mockUser);
 
       expect(query.userId).toBe(mockUser.id);
-      expect(service.findBookings).toHaveBeenCalledWith(query);
+      expect(service.findBookings).toHaveBeenCalledWith(query, mockUser.id);
     });
   });
 
@@ -207,7 +220,7 @@ describe('BookingsController', () => {
 
       const result = await controller.findOne('appointment-123', mockUser);
 
-      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
+      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
       expect(result).toEqual(mockBookingWithUser);
     });
 
@@ -245,9 +258,11 @@ describe('BookingsController', () => {
 
       const result = await controller.update('appointment-123', updateDto, mockUser);
 
-      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
-      expect(service.updateBooking).toHaveBeenCalledWith('appointment-123', updateDto);
-      expect(result).toEqual(updatedBooking);
+      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
+      expect(service.updateBooking).toHaveBeenCalledWith('appointment-123', updateDto, mockUser.id);
+      expect(result.data).toEqual(updatedBooking);
+      expect(result.message).toBe('更新预约成功');
+      expect(result.code).toBe(200);
     });
 
     it('应该抛出预约不存在的异常', async () => {
@@ -276,8 +291,8 @@ describe('BookingsController', () => {
 
       await controller.remove('appointment-123', mockUser);
 
-      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123');
-      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockUser.id);
+      expect(service.findBookingById).toHaveBeenCalledWith('appointment-123', mockUser.id);
+      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockUser.id, mockUser.userType, mockUser.id);
     });
 
     it('应该抛出预约不存在的异常', async () => {
@@ -286,6 +301,20 @@ describe('BookingsController', () => {
       await expect(controller.remove('non-existent', mockUser)).rejects.toThrow(
         ResourceNotFoundException,
       );
+    });
+
+    it('管理员删除预约时应透传管理员角色', async () => {
+      const adminBooking = {
+        ...mockAppointment,
+        userId: 'other-user-id',
+      };
+
+      mockBookingsService.findBookingById.mockResolvedValue(adminBooking);
+      mockBookingsService.cancelBooking.mockResolvedValue(adminBooking);
+
+      await controller.remove('appointment-123', mockAdmin);
+
+      expect(service.cancelBooking).toHaveBeenCalledWith('appointment-123', mockAdmin.id, mockAdmin.userType, mockAdmin.id);
     });
   });
 

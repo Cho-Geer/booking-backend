@@ -134,10 +134,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * @param params 查询参数
    * @returns 查询结果
    */
-  async rawQuery<T = any>(sql: string, params?: any[]): Promise<T> {
+  async rawQuery<T = any>(sql: string, params: any[] = []): Promise<T> {
     try {
-      const result = await this.$queryRawUnsafe<T>(sql, ...params);
-      return result;
+      const result = await this.$queryRawUnsafe(sql, ...params);
+      return result as T;
     } catch (error) {
       this.logger.error(`Raw query failed: ${sql}`, error);
       throw error;

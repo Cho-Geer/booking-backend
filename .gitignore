@@ -1,4 +1,72 @@
 /node_modules
 /dist
+/coverage
+/test-results
 
 /.env
+# 文档管理策略：默认忽略docs目录，明确列出需要版本管理的文档
+/docs/*
+# 核心项目文档（必须纳入版本管理）
+!/docs/api-contract.md          # API契约，前后端集成基础
+!/docs/config-differences.md    # 配置差异对比，环境配置指南
+!/docs/quick-start.md           # 快速入门指南，新开发者必备
+!/docs/migration-guide.md       # 配置迁移指南，配置变更参考
+!/docs/docker-hub-setup.md      # Docker Hub设置，部署配置
+# 项目特定文档（建议纳入，提供项目历史）
+!/docs/deployment-plan.md       # 部署计划，项目执行记录
+!/docs/monitoring-feedback-plan.md # 监控反馈计划，项目管理记录
+!/docs/implementation-completion-report.md # 项目完成报告，成果总结
+!/docs/developer-notification-template.md # 开发者通知模板，沟通参考
+# 内部文档（不应提交）
+/docs/private/                  # 内部决策、计划和临时文档
+/logs/*
+/.qoder
+/.sfdx
+/.trae
+/.trae-aicc
+/.clinerules
+/.env.production
+/.env.development
+/.env.development.backup
+/.env.test
+/.env.instance*
+# 个人本地配置文件（不应提交）
+/.env.local
+/.env.*.local
+# 注意：.env.development.example 是模板文件，应该提交到版本控制
+/uploads
+
+# 操作系统文件（不应提交）
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# 临时文件（不应提交）
+*.log
+*.tmp
+*.temp
+*.pid
+*.seed
+*.pid.lock
+# 编辑器临时文件
+*~
+*.swp
+*.swo
+
+# IDE 配置文件（不应提交，但部分配置可共享）
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

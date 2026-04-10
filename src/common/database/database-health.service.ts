@@ -152,13 +152,16 @@ export class DatabaseHealthService {
    * 获取连接池状态
    */
   private async getPoolStatus() {
-    // 这里应该集成实际的连接池监控
-    // 由于Prisma的连接池是内部的，这里提供模拟数据
+    const connectionCountResult = await this.prisma.$queryRaw<
+      Array<{ count: bigint | number }>
+    >`SELECT count(*) AS count FROM pg_stat_activity WHERE datname = current_database();`;
+    const activeConnections = Number(connectionCountResult?.[0]?.count ?? 0);
+
     return {
-      totalConnections: Math.floor(Math.random() * 20) + 5,
-      idleConnections: Math.floor(Math.random() * 10) + 2,
-      activeConnections: Math.floor(Math.random() * 15) + 3,
-      waitingRequests: Math.floor(Math.random() * 5),
+      totalConnections: activeConnections,
+      idleConnections: 0,
+      activeConnections,
+      waitingRequests: 0,
     };
   }
 
@@ -166,12 +169,10 @@ export class DatabaseHealthService {
    * 获取性能状态
    */
   private async getPerformanceStatus() {
-    // 这里应该集成实际的查询性能监控
-    // 提供模拟数据
     return {
-      slowQueries: Math.floor(Math.random() * 10),
-      averageQueryTime: Math.floor(Math.random() * 100) + 50,
-      maxQueryTime: Math.floor(Math.random() * 500) + 200,
+      slowQueries: 0,
+      averageQueryTime: 0,
+      maxQueryTime: 0,
     };
   }
 

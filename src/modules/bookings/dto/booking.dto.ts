@@ -33,6 +33,11 @@ export class CreateAppointmentDto {
   @IsUUID('4', { message: '用户ID格式无效' })
   userId?: string;
 
+  @ApiProperty({ description: '服务ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsOptional()
+  @IsUUID('4', { message: '服务ID格式无效' })
+  serviceId?: string;
+
   @ApiProperty({ description: '预约日期', example: '2024-01-01' })
   @IsNotEmpty({ message: '预约日期不能为空' })
   @IsDateString({}, { message: '预约日期格式无效' })
@@ -62,6 +67,11 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsString({ message: '备注必须是字符串' })
   notes?: string;
+
+  @ApiProperty({ description: '服务名称', example: '咨询服务' })
+  @IsOptional()
+  @IsString({ message: '服务名称必须是字符串' })
+  serviceName?: string;
 }
 
 /**
@@ -72,6 +82,21 @@ export class UpdateAppointmentDto {
   @IsOptional()
   @IsEnum(AppointmentStatusEnum, { message: '预约状态无效' })
   status?: AppointmentStatusEnum;
+
+  @ApiProperty({ description: '预约日期', required: false, example: '2024-01-01' })
+  @IsOptional()
+  @IsDateString({}, { message: '预约日期格式无效' })
+  appointmentDate?: string;
+
+  @ApiProperty({ description: '时间段ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsOptional()
+  @IsUUID('4', { message: '时间段ID格式无效' })
+  timeSlotId?: string;
+
+  @ApiProperty({ description: '服务ID', required: false, example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsOptional()
+  @IsUUID('4', { message: '服务ID格式无效' })
+  serviceId?: string;
 
   @ApiProperty({ description: '客户姓名', required: false, example: '张三' })
   @IsOptional()
@@ -148,6 +173,13 @@ export class AppointmentResponseDto {
     phoneNumber: string;
   };
 
+  @ApiProperty({ description: '服务信息' })
+  service?: {
+    id: string;
+    name: string;
+    durationMinutes: number;
+  };
+
   @ApiProperty({ description: '确认发送状态' })
   confirmationSent: boolean;
 
@@ -216,6 +248,11 @@ export class AppointmentQueryDto {
   @ApiProperty({ description: '每页数量', required: false, default: 10, minimum: 1, maximum: 100 })
   @IsOptional()
   limit?: number = 10;
+
+  @ApiProperty({ description: '搜索关键词', required: false, example: '张三' })
+  @IsOptional()
+  @IsString({ message: '搜索关键词必须是字符串' })
+  keyword?: string;
 }
 
 /**

@@ -5,7 +5,7 @@
  * @since 2024
  */
 
-import { IsString, IsEnum, IsOptional, IsDate, IsBoolean, IsPhoneNumber, IsNotEmpty, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsDate, IsBoolean, IsPhoneNumber, IsNotEmpty, MinLength, MaxLength, Matches, IsEmail } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { UserType as PrismaUserType, UserStatus as PrismaUserStatus } from '@prisma/client';
@@ -45,6 +45,12 @@ export class CreateUserDto {
   @IsNotEmpty({ message: '手机号不能为空' })
   phone: string;
 
+  @ApiProperty({ description: '邮箱', example: 'zhangsan@example.com', required: false })
+  @IsOptional()
+  @IsString({ message: '邮箱必须是字符串' })
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email?: string;
+
   @ApiProperty({ description: '用户类型', enum: UserType, required: false, default: UserType.CUSTOMER })
   @IsEnum(UserType, { message: '无效的用户类型' })
   @IsOptional()
@@ -65,6 +71,12 @@ export class CreateUserDto {
 /**
  * 更新用户DTO
  */
+export class ToggleUserStatusDto {
+  @ApiProperty({ description: '用户状态', enum: UserStatus })
+  @IsEnum(UserStatus, { message: '无效的用户状态' })
+  status: UserStatus;
+}
+
 export class UpdateUserDto {
   @ApiProperty({ description: '用户姓名', required: false })
   @IsString({ message: '姓名必须是字符串' })
@@ -76,6 +88,11 @@ export class UpdateUserDto {
   @IsPhoneNumber('CN', { message: '手机号格式不正确' })
   @IsOptional()
   phone?: string;
+
+  @ApiProperty({ description: '邮箱', required: false })
+  @IsEmail({}, { message: '邮箱格式不正确' })
+  @IsOptional()
+  email?: string;
 
   @ApiProperty({ description: '用户类型', enum: UserType, required: false })
   @IsEnum(UserType, { message: '无效的用户类型' })
@@ -106,6 +123,9 @@ export class UserResponseDto {
 
   @ApiProperty({ description: '手机号（脱敏）' })
   phone: string;
+
+  @ApiProperty({ description: '邮箱（脱敏）' })
+  email?: string;
 
   @ApiProperty({ description: '用户类型', enum: UserType })
   userType: UserType;
@@ -157,6 +177,11 @@ export class QueryUserDto {
   @IsOptional()
   phone?: string;
 
+  @ApiProperty({ description: '邮箱', required: false })
+  @IsEmail({}, { message: '邮箱格式不正确' })
+  @IsOptional()
+  email?: string;
+
   @ApiProperty({ description: '用户类型', enum: UserType, required: false })
   @IsEnum(UserType, { message: '无效的用户类型' })
   @IsOptional()
@@ -178,7 +203,6 @@ export class QueryUserDto {
   @Type(() => Date)
   @IsOptional()
   endDate?: Date;
-
   @ApiProperty({ description: '页码', required: false, default: 1, minimum: 1 })
   @IsOptional()
   page?: number = 1;

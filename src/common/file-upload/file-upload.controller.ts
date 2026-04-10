@@ -102,7 +102,7 @@ export class FileUploadController {
       throw new BadRequestException('请选择头像文件');
     }
 
-    return await this.fileUploadService.uploadAvatar(avatar, currentUser.userId);
+    return await this.fileUploadService.uploadAvatar(avatar, currentUser.id);
   }
 
   /**

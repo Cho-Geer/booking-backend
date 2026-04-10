@@ -18,35 +18,13 @@ import {
   Request,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators';
 import { WebsocketService } from './websocket.service';
-
-/**
- * 通知创建DTO
- */
-export class CreateNotificationDto {
-  userId: string;
-  type: 'SMS' | 'EMAIL' | 'WECHAT' | 'PUSH';
-  title: string;
-  content: string;
-  priority?: 'low' | 'medium' | 'high';
-  data?: any;
-  scheduledAt?: Date;
-}
-
-/**
- * 通知查询DTO
- */
-export class NotificationQueryDto {
-  userId?: string;
-  type?: string[];
-  isRead?: boolean;
-  limit?: number;
-  offset?: number;
-}
+import { NotificationQueryDto, NotificationCreateDto } from './dto/notification.dto';
+import { UserRole } from '../../modules/users/dto/user.dto';
 
 /**
  * 通知控制器类
@@ -67,7 +45,7 @@ export class NotificationController {
   @Post()
   @ApiOperation({ summary: '创建通知' })
   @ApiResponse({ status: 201, description: '通知创建成功' })
-  async createNotification(@Body() createNotificationDto: CreateNotificationDto) {
+  async createNotification(@Body() createNotificationDto: NotificationCreateDto) {
     return this.websocketService.createNotification(createNotificationDto);
   }
 
@@ -78,11 +56,14 @@ export class NotificationController {
    * @returns 通知列表
    */
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '获取用户通知列表' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getUserNotifications(@Request() req: any, @Query() query: NotificationQueryDto) {
-    const userId = req.user.userId;
-    return this.websocketService.getUserNotifications({ ...query, userId });
+  @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, description: '每页数量', example: 10 })
+  async getUserNotifications(@Query() query: NotificationQueryDto) {
+    return this.websocketService.getUserNotifications(query);
   }
 
   /**

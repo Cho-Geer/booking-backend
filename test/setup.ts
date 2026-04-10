@@ -8,7 +8,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { join } from 'path';
 
 // 全局变量存储容器实例
 let postgresContainer: StartedTestContainer;
@@ -36,6 +37,7 @@ export default async function globalSetup(): Promise<void> {
   const connectionString = `postgresql://test_user:test_password@${host}:${port}/booking_system_test`;
   process.env.DATABASE_URL = connectionString;
   process.env.NODE_ENV = 'test';
+  process.env.MAIL_DISABLE_TEMPLATES = 'true';
 
   // 将容器实例存储到全局变量
   (global as any).postgresContainer = postgresContainer;
@@ -45,9 +47,11 @@ export default async function globalSetup(): Promise<void> {
   // 运行数据库迁移
   try {
     console.log('🔄 运行数据库迁移...');
-    execSync('npx prisma migrate deploy', { 
+    const prismaCliPath = join(__dirname, '..', 'node_modules', 'prisma', 'build', 'index.js');
+    execFileSync(process.execPath, [prismaCliPath, 'migrate', 'deploy'], {
       stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL: connectionString }
+      cwd: join(__dirname, '..'),
+      env: { ...process.env, DATABASE_URL: connectionString },
     });
     console.log('✅ 数据库迁移完成');
   } catch (error) {

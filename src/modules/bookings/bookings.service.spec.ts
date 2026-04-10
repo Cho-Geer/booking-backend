@@ -7,6 +7,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingsService } from './bookings.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { CreateAppointmentDto, UpdateAppointmentDto, AppointmentStatusEnum } from './dto/booking.dto';
 import {
   ResourceNotFoundException,
@@ -14,7 +15,8 @@ import {
   AppointmentException,
   ResourceConflictException,
   DatabaseException,
-} from '../../common/exceptions/business.exceptions';import { AppointmentStatus } from '@prisma/client';
+} from '../../common/exceptions/business.exceptions';
+import { AppointmentStatus, Prisma } from '@prisma/client';
 
 describe('BookingsService', () => {
   let service: BookingsService;
@@ -32,6 +34,20 @@ describe('BookingsService', () => {
       update: jest.fn(),
       findMany: jest.fn(),
     },
+    service: {
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+    },
+  };
+
+  // Create a transaction mock that passes the same mockPrismaService as the tx client
+  const mockTransaction = jest.fn((fn) => fn(mockPrismaService));
+  mockPrismaService['$transaction'] = mockTransaction;
+
+  const mockEmailService = {
+    sendBookingConfirmation: jest.fn().mockResolvedValue(undefined),
+    sendBookingCancellation: jest.fn().mockResolvedValue(undefined),
+    sendBookingUpdate: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
@@ -41,6 +57,10 @@ describe('BookingsService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: EmailService,
+          useValue: mockEmailService,
         },
       ],
     }).compile();
@@ -92,7 +112,7 @@ describe('BookingsService', () => {
       };
 
       mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
-      mockPrismaService.appointment.count.mockResolvedValue(5);
+      mockPrismaService.appointment.count.mockResolvedValue(0); // No existing appointments
       mockPrismaService.appointment.findFirst.mockResolvedValue(null);
       mockPrismaService.appointment.create.mockResolvedValue(mockBooking);
 
@@ -101,6 +121,47 @@ describe('BookingsService', () => {
       expect(result).toBeDefined();
       expect(result.id).toBe('booking-123');
       expect(result.customerName).toBe('张三');
+      expect(mockTransaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+      expect(mockPrismaService.appointment.count).toHaveBeenCalledWith({
+        where: {
+          timeSlotId: 'timeslot-123',
+          appointmentDate: new Date('2024-01-15'),
+          status: {
+            in: [
+              AppointmentStatus.PENDING,
+              AppointmentStatus.CONFIRMED,
+              AppointmentStatus.COMPLETED,
+            ],
+          },
+        },
+      });
+    });
+
+    it('应该在串行化冲突后重试创建预约', async () => {
+      const mockTimeSlot = {
+        id: 'timeslot-123',
+        isActive: true,
+        slotTime: '09:00:00',
+        durationMinutes: 30,
+      };
+
+      mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
+      mockPrismaService.appointment.count.mockResolvedValue(0);
+      mockPrismaService.appointment.findFirst.mockResolvedValue(null);
+      mockPrismaService.appointment.create.mockResolvedValue(mockBooking);
+      mockTransaction
+        .mockImplementationOnce(async () => {
+          throw { code: 'P2034' };
+        })
+        .mockImplementationOnce(async (fn) => fn(mockPrismaService));
+
+      const result = await service.createBooking(createBookingDto);
+
+      expect(result.id).toBe('booking-123');
+      expect(mockTransaction).toHaveBeenCalledTimes(2);
     });
 
     it('应该抛出时间段不存在的异常', async () => {
@@ -135,7 +196,7 @@ describe('BookingsService', () => {
       };
 
       mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
-      mockPrismaService.appointment.count.mockResolvedValue(10);
+      mockPrismaService.appointment.count.mockResolvedValue(1); // maxCapacity is 1, so 1 >= 1 means full
 
       await expect(service.createBooking(createBookingDto)).rejects.toThrow(
         TimeSlotConflictException,
@@ -150,14 +211,41 @@ describe('BookingsService', () => {
         durationMinutes: 30,
       };
 
-      const existingBooking = {
-        id: 'existing-booking',
-        userId: 'user-123',
+      const mockService = {
+        id: 'service-123',
+        name: 'Test Service',
+        isActive: true,
+      };
+
+      // Mock for service conflict check (when serviceId is provided)
+      mockPrismaService.service.findUnique.mockResolvedValue(mockService);
+      mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
+      mockPrismaService.appointment.count.mockResolvedValue(0); // Not full
+      mockPrismaService.appointment.findFirst.mockResolvedValue({ id: 'existing' }); // Service conflict
+
+      // Add serviceId to trigger the conflict check
+      const createDtoWithService = {
+        ...createBookingDto,
+        serviceId: 'service-123',
+      };
+
+      await expect(service.createBooking(createDtoWithService)).rejects.toThrow(
+        TimeSlotConflictException,
+      );
+    });
+
+    it('应该将数据库唯一约束冲突映射为时间段冲突异常', async () => {
+      const mockTimeSlot = {
+        id: 'timeslot-123',
+        isActive: true,
+        slotTime: '09:00:00',
+        durationMinutes: 30,
       };
 
       mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
-      mockPrismaService.appointment.count.mockResolvedValue(3);
-      mockPrismaService.appointment.findFirst.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.count.mockResolvedValue(0);
+      mockPrismaService.appointment.findFirst.mockResolvedValue(null);
+      mockPrismaService.appointment.create.mockRejectedValue({ code: 'P2002' });
 
       await expect(service.createBooking(createBookingDto)).rejects.toThrow(
         TimeSlotConflictException,
@@ -194,6 +282,7 @@ describe('BookingsService', () => {
         updatedAt: new Date(),
         user: { name: '张三', phoneNumber: '13800138000' },
         timeSlot: { slotTime: '09:00:00', durationMinutes: 30 },
+        service: null,
       };
 
       mockPrismaService.appointment.findUnique.mockResolvedValue(mockBooking);
@@ -208,6 +297,7 @@ describe('BookingsService', () => {
         include: {
           timeSlot: true,
           user: true,
+          service: true,
         },
       });
     });

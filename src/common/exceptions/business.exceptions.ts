@@ -52,6 +52,15 @@ export class AuthenticationException extends BusinessException {
 }
 
 /**
+ * 认证异常
+ */
+export class UserNotActiveException extends BusinessException {
+  constructor(message = '用户不存在或已被禁用', details?: any) {
+    super('USER_NOT_ACTIVE', message, HttpStatus.NOT_FOUND, details);
+  }
+}
+
+/**
  * 授权异常
  */
 export class AuthorizationException extends BusinessException {
@@ -65,7 +74,7 @@ export class AuthorizationException extends BusinessException {
  */
 export class ResourceNotFoundException extends BusinessException {
   constructor(resource = '资源', details?: any) {
-    super('RESOURCE_NOT_FOUND', `${resource}不存在`, HttpStatus.NOT_FOUND, details);
+    super('RESOURCE_NOT_FOUND', `${resource}`, HttpStatus.NOT_FOUND, details);
   }
 }
 
@@ -120,6 +129,33 @@ export class UserException extends BusinessException {
 export class PhoneNumberExistsException extends BusinessException {
   constructor(phoneNumber: string) {
     super('PHONE_NUMBER_EXISTS', `手机号 ${phoneNumber} 已存在`, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 手机号格式无效异常
+ */
+export class InvalidPhoneNumberException extends BusinessException {
+  constructor(phoneNumber: string) {
+    super('INVALID_PHONE_NUMBER', `手机号 ${phoneNumber} 格式无效`, HttpStatus.BAD_REQUEST);
+  }
+}
+
+/**
+ * 邮箱已存在异常
+ */
+export class EmailExistsException extends BusinessException {
+  constructor(email: string) {
+    super('EMAIL_EXISTS', `邮箱 ${email} 已存在`, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 邮箱格式无效异常
+ */
+export class InvalidEmailException extends BusinessException {
+  constructor(email: string) {
+    super('INVALID_EMAIL', `邮箱 ${email} 格式无效`, HttpStatus.BAD_REQUEST);
   }
 }
 
