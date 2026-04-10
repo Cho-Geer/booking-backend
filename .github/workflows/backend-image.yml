@@ -50,7 +50,8 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=,format=short
+            type=sha,prefix={{branch}}-,enable=${{ github.event_name != 'pull_request' }}
+            type=sha,prefix=sha-,enable=${{ github.event_name == 'pull_request' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Extract metadata for migration image
@@ -63,7 +64,8 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=,format=short
+            type=sha,prefix={{branch}}-,enable=${{ github.event_name != 'pull_request' }}
+            type=sha,prefix=sha-,enable=${{ github.event_name == 'pull_request' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Build main backend image (PR - single platform, load locally)
