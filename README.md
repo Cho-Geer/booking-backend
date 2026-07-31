@@ -1,12 +1,12 @@
-# CRM Booking Platform Backend
+# CRM 予約プラットフォーム バックエンド
 
-NestJS based backend for a CRM style booking platform.
+CRM スタイルの予約プラットフォーム向け、NestJS ベースのバックエンドです。
 
-This service provides authentication, booking management, user and service administration, time slot management, Redis backed caching, Swagger docs, and WebSocket based real time notifications.
+本サービスは、認証、予約管理、ユーザーとサービスの管理、予約枠管理、Redis ベースのキャッシュ、Swagger ドキュメント、WebSocket ベースのリアルタイム通知を提供します。
 
-Detailed endpoint contract: [docs/api-contract.md](./docs/api-contract.md)
+詳細なエンドポイント仕様: [docs/api-contract.md](./docs/api-contract.md)
 
-## Tech Stack
+## 技術スタック
 
 - NestJS
 - TypeScript
@@ -16,11 +16,11 @@ Detailed endpoint contract: [docs/api-contract.md](./docs/api-contract.md)
 - Swagger
 - Jest
 
-## Current Modules
+## 現在のモジュール
 
-The application currently wires these modules in [src/app.module.ts](./src/app.module.ts).
+本アプリケーションは [src/app.module.ts](./src/app.module.ts) で以下のモジュールを配線しています。
 
-Business modules:
+業務モジュール:
 
 - `auth`
 - `users`
@@ -30,36 +30,36 @@ Business modules:
 - `email`
 - `retention`
 
-Shared infrastructure:
+共有インフラ:
 
 - `common/database`
 - `common/prisma`
 - `common/file-upload`
 - `common/websocket`
 
-## API Overview
+## API 概要
 
-The local backend runs at:
+ローカルバックエンドの起動アドレス:
 
 ```text
 http://localhost:3001
 ```
 
-The app sets the global API prefix to `/v1`, so application endpoints are exposed under:
+アプリはグローバル API プレフィックスを `/v1` に設定しているため、アプリケーションのエンドポイントは次の配下で公開されます:
 
 ```text
 http://localhost:3001/v1/...
 ```
 
-Swagger UI is available at:
+Swagger UI は次のアドレスで利用可能です:
 
 ```text
 http://localhost:3001/api/docs
 ```
 
-### Main Contract For This Branch
+### このブランチの主要契約
 
-These are the main endpoints reviewers and frontend work should treat as the current contract:
+これらはレビュアーとフロントエンド作業が現在の契約として扱うべき主要エンドポイントです:
 
 - `POST /v1/auth/login`
 - `POST /v1/bookings`
@@ -72,78 +72,78 @@ These are the main endpoints reviewers and frontend work should treat as the cur
 - `GET /v1/services`
 - `GET /v1/services/all`
 
-### Important Booking Rules
+### 重要な予約ルール
 
-- `/bookings/all` is the shared list endpoint for both user and admin clients in this branch.
-- For non-admin users, the backend narrows `/bookings/all` to the current authenticated user even if the incoming query is broader.
-- `/bookings/me` is not adopted in this branch and should not be treated as part of the contract.
+- `/bookings/all` はこのブランチにおいて、ユーザーと管理者クライアントの共有一覧エンドポイントです。
+- 非管理者ユーザーについては、入力クエリが広くても、バックエンドは `/bookings/all` を現在ログイン中のユーザーに絞り込みます。
+- このブランチでは `/bookings/me` を採用していないため、契約の一部として扱わないでください。
 
-### Endpoint Notes
+### エンドポイント補足
 
-#### Auth
+#### 認証
 
 - `POST /v1/auth/login`
-  Phone number plus verification code login.
-  Returns login payload and sets auth cookies.
+  電話番号と確認コードによるログイン。
+  ログイン情報を返し、認証 Cookie を設定します。
 
-#### Bookings
+#### 予約
 
 - `POST /v1/bookings`
-  Creates a booking for the authenticated user.
-  If `userId` is omitted, backend fills it from the current user.
+  認証ユーザー向けに予約を作成します。
+  `userId` が省略された場合、バックエンドは現在のユーザーから補完します。
 
 - `GET /v1/bookings/all`
-  Shared user/admin list endpoint.
-  Accepts booking query filters and pagination params.
-  Non-admin users are restricted server-side to their own records.
+  ユーザー / 管理者共有の一覧エンドポイント。
+  予約クエリフィルタとページネーションパラメータを受け付けます。
+  非管理者ユーザーはサーバーサイドで自分のレコードに制限されます。
 
 - `GET /v1/bookings/by-date?date=YYYY-MM-DD`
-  Returns bookings for a single date.
-  Used for date-based availability and calendar style views.
+  単一日付の予約を返します。
+  日付ベースの空き状況確認やカレンダー形式のビューで使用されます。
 
 - `GET /v1/bookings/:id`
-  Returns a single booking by id.
-  Non-admin users can only access their own booking.
+  指定 ID の予約を 1 件返します。
+  非管理者ユーザーは自分の予約のみアクセス可能です。
 
 - `PATCH /v1/bookings/:id`
-  Updates a booking.
-  Non-admin users can only update their own booking.
+  予約を更新します。
+  非管理者ユーザーは自分の予約のみ更新可能です。
 
 - `PATCH /v1/bookings/:id/cancel`
-  Frontend-compatible cancel endpoint for this branch.
+  このブランチでフロントエンド互換のキャンセル用エンドポイント。
 
-#### Time Slots
+#### 予約枠
 
 - `GET /v1/time-slots/available-slots?date=YYYY-MM-DD`
-  Returns slot availability for a single day.
-  `date` must be passed in `YYYY-MM-DD` format.
+  単一日のスロット空き状況を返します。
+  `date` は `YYYY-MM-DD` 形式で指定する必要があります。
 
-#### Services
+#### サービス
 
 - `GET /v1/services`
-  Shared service list endpoint used by booking flows.
+  予約フローで使用される共有サービス一覧エンドポイント。
 
 - `GET /v1/services/all`
-  Admin-oriented service list endpoint with pagination/filtering support.
+  ページネーション / フィルタリングをサポートした管理者向けサービス一覧エンドポイント。
 
-## Runtime Features
+## ランタイム機能
 
-- JWT based auth with access and refresh tokens
-- Auth cookies plus CSRF token cookie support
-- Role and permission guarded routes
-- Booking CRUD and booking statistics
-- Service management for admins
-- Time slot availability queries
-- User management and profile APIs
-- Redis cache configuration
-- WebSocket gateway support
-- Email module with Handlebars templates
-- Scheduled retention jobs
-- File upload module
+- アクセストークンとリフレッシュトークンを用いた JWT ベース認証
+- 認証 Cookie および CSRF トークン Cookie のサポート
+- ロールと権限によるルートガード
+- 予約 CRUD と予約統計
+- 管理者向けサービス管理
+- 予約枠の可用性照会
+- ユーザー管理とプロフィール API
+- Redis キャッシュ設定
+- WebSocket ゲートウェイ対応
+- Handlebars テンプレートを利用したメールモジュール
+- スケジュール実行されるリテンションジョブ
+- ファイルアップロードモジュール
 
-## Data Model
+## データモデル
 
-The Prisma schema currently includes these main models:
+現在の Prisma スキーマには以下の主要モデルが含まれています:
 
 - `User`
 - `UserSession`
@@ -159,20 +159,20 @@ The Prisma schema currently includes these main models:
 - `SystemLog`
 - `AppointmentStatistic`
 
-See [prisma/schema.prisma](./prisma/schema.prisma) for the full schema.
+完全なスキーマは [prisma/schema.prisma](./prisma/schema.prisma) を参照してください。
 
-## Environment
+## 環境
 
-Example env files are included:
+サンプル env ファイルが用意されています:
 
 - `.env.example`
 - `.env.production.example`
 
-For local development, copy `.env.example` to `.env.development` and adjust values for your machine.
+ローカル開発では、`.env.example` を `.env.development` にコピーし、各自の環境に合わせて値を調整してください。
 
-Do not commit real environment files with secrets.
+シークレットを含む実環境の env ファイルはコミットしないでください。
 
-Important variables include:
+主要な変数:
 
 - `PORT`
 - `API_PREFIX`
@@ -181,54 +181,54 @@ Important variables include:
 - `REDIS_PORT`
 - `JWT_SECRET`
 - `JWT_REFRESH_SECRET`
-- `FRONTEND_URL` or `FRONTEND_URLS`
+- `FRONTEND_URL` または `FRONTEND_URLS`
 - `CSRF_ENABLED`
 
-Environment notes:
+環境に関する補足:
 
-- `PORT=3001` is the expected local backend port for this branch.
-- `API_PREFIX=/v1` remains in the sample because runtime code still references `process.env.API_PREFIX` when mounting CSRF middleware.
-- `/v1` is the API contract for this branch.
-- `FRONTEND_URL` is the legacy single-origin CORS setting.
-- `FRONTEND_URLS` is the multi-origin CORS allowlist for setups that need more than one allowed frontend origin.
+- このブランチでは `PORT=3001` が想定されるローカルバックエンドのポートです。
+- ランタイムコードが CSRF ミドルウェアのマウント時に `process.env.API_PREFIX` を参照しているため、サンプルには `API_PREFIX=/v1` が残っています。
+- このブランチの API 契約は `/v1` です。
+- `FRONTEND_URL` はレガシーな単一オリジン向け CORS 設定です。
+- `FRONTEND_URLS` は複数のフロントエンドオリジンを許可する必要がある場合の複数オリジン CORS 許可リストです。
 
-## Local Development
+## ローカル開発
 
-Install dependencies:
+依存関係をインストール:
 
 ```bash
 npm install
 ```
 
-Start the development server:
+開発サーバーを起動:
 
 ```bash
 npm run start:dev
 ```
 
-The default local frontend is expected at `http://localhost:3000`, and the backend API runs at `http://localhost:3001`.
+ローカルでの想定フロントエンドは `http://localhost:3000`、バックエンド API は `http://localhost:3001` です。
 
-Expected local URL:
+ローカル URL:
 
 ```text
 http://localhost:3001
 ```
 
-Build for production:
+本番ビルド:
 
 ```bash
 npm run build
 ```
 
-Start the built app:
+ビルド済みアプリを起動:
 
 ```bash
 npm run start:prod
 ```
 
-## Database Commands
+## データベースコマンド
 
-Useful Prisma scripts:
+よく使う Prisma スクリプト:
 
 ```bash
 npm run prisma:generate
@@ -238,21 +238,21 @@ npm run prisma:seed
 npm run db:init
 ```
 
-## Testing
+## テスト
 
-Run unit tests:
+ユニットテストを実行:
 
 ```bash
 npm run test
 ```
 
-Run coverage:
+カバレッジを実行:
 
 ```bash
 npm run test:cov
 ```
 
-Run e2e tests:
+e2e テストを実行:
 
 ```bash
 npm run test:e2e
@@ -260,61 +260,61 @@ npm run test:e2e
 
 ## Docker
 
-The included [docker-compose.yml](./docker-compose.yml) starts infrastructure services only:
+付属の [docker-compose.yml](./docker-compose.yml) はインフラサービスのみを起動します:
 
 - PostgreSQL
 - Redis
 
-Start them with:
+次のコマンドで起動します:
 
 ```bash
 docker compose up -d
 ```
 
-The NestJS API itself is started separately with the npm scripts above.
+NestJS API 自体はこのコマンドでは起動せず、上記の npm スクリプトで別途起動します。
 
-## Docker Environment Setup for Testing
+## テスト用 Docker 環境セットアップ
 
-The E2E tests use TestContainers to run PostgreSQL containers. To run these tests locally, you need a working Docker environment.
+E2E テストは TestContainers を使用して PostgreSQL コンテナを起動します。ローカルでこれらのテストを実行するには、動作する Docker 環境が必要です。
 
-### 1. Install Docker
+### 1. Docker のインストール
 
 #### Windows
-1. Download and install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
-2. During installation, enable WSL 2 backend (recommended) or Hyper-V backend
-3. Restart your computer after installation
-4. Start Docker Desktop from the Start menu
+1. [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) をダウンロードしてインストール
+2. インストール時に WSL 2 バックエンド(推奨)または Hyper-V バックエンドを有効化
+3. インストール後にコンピュータを再起動
+4. スタートメニューから Docker Desktop を起動
 
 #### macOS
-1. Download and install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
-2. Move Docker.app to Applications folder
-3. Start Docker Desktop from Applications
+1. [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/) をダウンロードしてインストール
+2. Docker.app を Applications フォルダに移動
+3. Applications から Docker Desktop を起動
 
-#### Linux (Ubuntu/Debian)
+#### Linux(Ubuntu/Debian)
 ```bash
-# Uninstall old versions
+# 古いバージョンをアンインストール
 sudo apt-get remove docker docker-engine docker.io containerd runc
 
-# Install dependencies
+# 依存関係をインストール
 sudo apt-get update
 sudo apt-get install apt-transport-https ca-certificates curl gnupg lsb-release
 
-# Add Docker's official GPG key
+# Docker 公式の GPG キーを追加
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
-# Set up stable repository
+# 安定版リポジトリをセットアップ
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Install Docker Engine
+# Docker Engine をインストール
 sudo apt-get update
 sudo apt-get install docker-ce docker-ce-cli containerd.io
 
-# Start Docker service
+# Docker サービスを起動
 sudo systemctl start docker
 sudo systemctl enable docker
 ```
 
-### 2. Verify Docker Installation
+### 2. Docker インストールの確認
 
 ```bash
 docker --version
@@ -322,18 +322,18 @@ docker info
 docker run hello-world
 ```
 
-### 3. Configure User Permissions (Linux/macOS)
+### 3. ユーザー権限の設定(Linux/macOS)
 
-Add your user to the `docker` group to avoid using `sudo`:
+`sudo` を使わずに済むよう、ユーザーを `docker` グループに追加します:
 
 ```bash
 sudo usermod -aG docker $USER
-# Log out and log back in for changes to take effect
+# 変更を反映するため、一度ログアウトして再ログイン
 ```
 
-### 4. Configure TestContainers Environment
+### 4. TestContainers 環境の設定
 
-TestContainers needs to detect Docker. Set environment variables:
+TestContainers が Docker を検出できるよう環境変数を設定します:
 
 #### Windows PowerShell
 ```powershell
@@ -343,53 +343,60 @@ $env:DOCKER_HOST = "npipe:////./pipe/docker_engine"
 #### Linux/macOS Bash
 ```bash
 export DOCKER_HOST=unix:///var/run/docker.sock
-# Add to ~/.bashrc or ~/.zshrc for persistence
+# 永続化のため ~/.bashrc または ~/.zshrc に追加
 echo 'export DOCKER_HOST=unix:///var/run/docker.sock' >> ~/.bashrc
 ```
 
-### 5. Verify TestContainers Configuration
+### 5. TestContainers 設定の確認
 
-Run a simple test to verify Docker integration:
+Docker 統合を確認するため、簡単なテストを実行します:
 
 ```bash
-# In the booking-backend directory
+# booking-backend ディレクトリで
 npm run test:e2e -- --testNamePattern="setup" --verbose
 ```
 
-Alternatively, use the validation script to check Docker environment:
+もしくは、検証スクリプトを使って Docker 環境を確認できます:
 
 ```powershell
-# Run the validation script (Windows)
+# (Windows で)検証スクリプトを実行
 ./scripts/check-docker-env.ps1
 
-# Or for Linux/macOS, you can create a similar bash script
+# Linux/macOS の場合は、同様の bash スクリプトを作成してください
 ```
 
-### 6. Troubleshooting Common Issues
+### 6. よくある問題のトラブルシューティング
 
 #### "Could not find a working container runtime strategy"
-- Ensure Docker Desktop is running (Windows/macOS)
-- Ensure Docker service is started (Linux: `sudo systemctl status docker`)
-- Verify `DOCKER_HOST` environment variable is set correctly
-- Check user permissions (Linux: user should be in `docker` group)
+- Docker Desktop が起動していることを確認(Windows/macOS)
+- Docker サービスが起動していることを確認(Linux: `sudo systemctl status docker`)
+- `DOCKER_HOST` 環境変数が正しく設定されているか確認
+- ユーザー権限を確認(Linux: ユーザーが `docker` グループに属していること)
 
 #### "Permission denied while trying to connect to the Docker daemon socket"
 ```bash
 # Linux/macOS
 sudo usermod -aG docker $USER
-# Log out and log back in
+# 一度ログアウトして再ログイン
 ```
 
-#### TestContainers timeout
-- Configure Docker image accelerator for faster downloads (China users)
-- Increase timeout in test configuration if needed
+#### TestContainers タイムアウト
+- (中国国内ユーザー向け)Docker イメージアクセラレータを設定してダウンロードを高速化
+- 必要に応じてテスト設定のタイムアウトを延長
 
-### 7. Alternative: Skip Docker Tests
+### 7. 代替案: Docker テストをスキップする
 
-If Docker is not available, you can skip E2E tests:
+Docker が利用できない環境では、E2E テストをスキップできます:
 
 ```bash
-npm run test  # Runs unit tests only
+npm run test  # ユニットテストのみ実行
 ```
 
-For CI/CD environments, Docker-based tests will run automatically.
+CI/CD 環境では、Docker ベースのテストが自動で実行されます。
+
+---
+
+## 🇬🇧 English | 🇨🇳 中文
+
+- [English version](./README.en.md)
+- [中文版本](./README.zh.md)
