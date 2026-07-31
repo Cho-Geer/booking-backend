@@ -1,0 +1,4 @@
+# Mark Playwright test reports as generated docs (excluded from language stats)
+apps/booking-backend-e2e/test-results/** linguist-generated
+apps/booking-backend-e2e/playwright-report/** linguist-generated
+*.html linguist-generated
