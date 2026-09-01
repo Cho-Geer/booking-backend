@@ -141,7 +141,11 @@ model Appointment {
   timeSlotId          String            @db.Uuid
   serviceId           String?           @db.Uuid
   status              AppointmentStatus @default(PENDING)
-  
+
+  // P0-2 契約増分（DD-01 §2.4・2026-09-01 拍板）
+  version             Int                 @default(0)
+  syncStatus          String              @default("PENDING") @db.VarChar(16)
+
   // 用户信息快照
   customerName        String            @db.VarChar(100)
   customerPhone       String            @db.VarChar(20) // 加密存储
@@ -168,6 +172,7 @@ model Appointment {
   service             Service?          @relation(fields: [serviceId], references: [id])
   history             AppointmentHistory[]
   notifications       Notification[]
+  integrationCommands IntegrationCommand[]
   
   @@index([userId])
   @@index([appointmentDate])
@@ -358,4 +363,27 @@ model Service {
   @@index([categoryId])
   @@index([displayOrder])
   @@map("services")
+}
+
+/**
+ * コマンド冪等結果モデル（第 14 モデル・P0-2 契約）
+ * 統合コマンドの初回受理結果（200 のみ）を保存する冪等キーテーブル。
+ * DD-01 §2.15・handoff 2026-09-01-dd02-commandid-idempotency-storage-handoff.md
+ * RULE-08 正本更新と同一トランザクションで書き込む（応答キャッシュ＝Redis 案は否決）。
+ */
+model IntegrationCommand {
+  id               String          @id @default(uuid()) @db.Uuid
+  commandId        String          @unique @map("command_id") @db.VarChar(64) // 冪等キー・TERM-12（型・桁は §2.15 注記④ の migration 時確定）
+  commandType      String          @map("command_type") @db.VarChar(32) // CANCEL_BOOKING のみ・RULE-13
+  appointmentId    String?         @map("appointment_id") @db.Uuid // 任意参照・onDelete 指定なし（Prisma 既定 SET NULL）
+  httpStatus       Int             @map("http_status") // 保存値は 200 のみ
+  resultCode       String          @map("result_code") @db.VarChar(32) // CD-12（SUCCESS）
+  canonicalVersion Int             @map("canonical_version") // 受理時の version・TERM-10
+  correlationId    String?         @map("correlation_id") @db.VarChar(64) // TERM-17
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  appointment      Appointment?    @relation(fields: [appointmentId], references: [id])
+
+  @@index([appointmentId])
+  @@map("integration_commands")
 }
