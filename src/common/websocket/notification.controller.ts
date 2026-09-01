@@ -19,7 +19,6 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators';
 import { WebsocketService } from './websocket.service';
@@ -32,7 +31,6 @@ import { UserRole } from '../../modules/users/dto/user.dto';
  */
 @ApiTags('通知管理')
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class NotificationController {
   constructor(private readonly websocketService: WebsocketService) {}

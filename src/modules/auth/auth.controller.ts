@@ -13,7 +13,6 @@ import {
   Query,
   Res,
   Req,
-  UseGuards,
   UseInterceptors,
   ValidationPipe,
   HttpCode,
@@ -25,7 +24,6 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto, SendVerificationCodeDto, RefreshTokenDto, LoginResponseDto, UserInfoResponseDto } from './dto/auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipJwtAuth } from '../../common/decorators';
 import { CurrentUser } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
@@ -142,7 +140,6 @@ export class AuthController {
    * @returns 登出结果
    */
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: '用户登出', description: '用户登出系统' })
@@ -188,7 +185,6 @@ export class AuthController {
    * @returns 用户信息
    */
   @Get('profile')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取用户信息', description: '获取当前登录用户的详细信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
@@ -203,7 +199,6 @@ export class AuthController {
    * @returns 验证结果
    */
   @Get('verify')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '验证令牌', description: '验证访问令牌是否有效' })
   @ApiResponse({ status: 200, description: '令牌有效' })

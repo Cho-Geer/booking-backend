@@ -8,9 +8,8 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { TimeSlotsService } from './time-slots.service';
 import { CreateTimeSlotDto, UpdateTimeSlotDto, TimeSlotQueryDto, TimeSlotAvailabilityDto } from './dto/time-slot.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/index';
+import { Roles, SkipJwtAuth } from '../../common/decorators/index';
 import { UserRole } from '../users/dto/user.dto';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
@@ -29,7 +28,7 @@ export class TimeSlotsController {
    * @returns 创建结果
    */
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '创建时间段', description: '管理员创建新的时间段' })
   @ApiResponse({ status: 201, description: '创建成功' })
@@ -45,6 +44,7 @@ export class TimeSlotsController {
    * @returns 时间段列表
    */
   @Get()
+  @SkipJwtAuth()
   @ApiOperation({ summary: '获取时间段列表', description: '获取所有时间段列表' })
   @ApiResponse({ status: 200, description: '获取成功' })
   async findAll(@Query() query: TimeSlotQueryDto) {
@@ -57,6 +57,7 @@ export class TimeSlotsController {
    * @returns 时间段可用性信息
    */
   @Get('available-slots')
+  @SkipJwtAuth()
   @ApiOperation({ summary: '获取时间段可用性', description: '获取指定日期的时间段可用性信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
   @ApiResponse({ status: 400, description: '参数错误' })
@@ -72,6 +73,7 @@ export class TimeSlotsController {
    * @returns 时间段详情
    */
   @Get(':id')
+  @SkipJwtAuth()
   @ApiOperation({ summary: '获取时间段详情', description: '根据ID获取时间段详情' })
   @ApiResponse({ status: 200, description: '获取成功' })
   @ApiResponse({ status: 404, description: '时间段不存在' })
@@ -86,7 +88,7 @@ export class TimeSlotsController {
    * @returns 更新结果
    */
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '更新时间段', description: '管理员更新时间段信息' })
   @ApiResponse({ status: 200, description: '更新成功' })
@@ -103,7 +105,7 @@ export class TimeSlotsController {
    * @returns 删除结果
    */
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '删除时间段', description: '管理员删除时间段' })
   @ApiResponse({ status: 200, description: '删除成功' })

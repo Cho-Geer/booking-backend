@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
 import { redisStore } from 'cache-manager-redis-store';
+import { resolveJwtExpiresIn } from './common/utils/jwt-expires.util';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
@@ -49,6 +53,19 @@ import { RetentionModule } from './modules/retention/retention.module';
       }),
       inject: [ConfigService],
     }),
+
+    // JWT模块（global: true で全モジュールに JwtService を提供。グローバル JwtAuthGuard が利用）
+    JwtModule.registerAsync({
+      global: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: {
+          expiresIn: resolveJwtExpiresIn(configService.get('JWT_EXPIRES_IN')),
+        },
+      }),
+    }),
     
     // 文件上传模块
     FileUploadModule,
@@ -65,6 +82,13 @@ import { RetentionModule } from './modules/retention/retention.module';
     TimeSlotsModule,
     EmailModule,
     RetentionModule,
+  ],
+  providers: [
+    // 全局认证守卫：默认所有路由需要 JWT，公开路由用 @SkipJwtAuth() 标记
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
   ],
 })
 export class AppModule {}

@@ -6,15 +6,11 @@
  */
 
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { resolveJwtExpiresIn } from '../../common/utils/jwt-expires.util';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { UserAvatarController } from './controllers/user-avatar.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FileUploadModule } from '../../common/file-upload/file-upload.module';
-import { ConfigModule } from '@nestjs/config';
-import { ConfigService } from '@nestjs/config';
 import { EmailModule } from '../email/email.module';
 import { JwtService } from '@nestjs/jwt';
 
@@ -23,16 +19,6 @@ import { JwtService } from '@nestjs/jwt';
     PrismaModule,
     FileUploadModule,
     EmailModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET'),
-        signOptions: {
-          expiresIn: resolveJwtExpiresIn(configService.get('JWT_EXPIRES_IN')),
-        },
-      }),
-      inject: [ConfigService],
-    }),
   ],
   controllers: [UsersController, UserAvatarController],
   providers: [

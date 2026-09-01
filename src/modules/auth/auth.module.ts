@@ -6,13 +6,10 @@
  */
 
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { resolveJwtExpiresIn } from '../../common/utils/jwt-expires.util';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
-import { JwtStrategy } from './strategies/jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
@@ -20,16 +17,6 @@ import { PrismaModule } from '../prisma/prisma.module';
     ConfigModule,
     PrismaModule,
     UsersModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule], // 如果需要用到 ConfigService
-      inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET'),
-        signOptions: {
-          expiresIn: resolveJwtExpiresIn(configService.get('JWT_EXPIRES_IN')),
-        },
-      }),
-    }),
   ],
   controllers: [AuthController],
   providers: [AuthService],

@@ -6,8 +6,7 @@
  */
 
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { WebsocketGateway } from './websocket.gateway';
 import { WebsocketService } from './websocket.service';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -17,16 +16,6 @@ import { NotificationController } from './notification.controller';
   imports: [
     ConfigModule,
     PrismaModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get('JWT_EXPIRES_IN', '7d'),
-        },
-      }),
-      inject: [ConfigService],
-    }),
   ],
   controllers: [NotificationController],
   providers: [WebsocketGateway, WebsocketService],

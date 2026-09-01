@@ -23,7 +23,6 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@ne
 import { UsersService } from './users.service';
 import { CreateUserDto, QueryUserDto, ToggleUserStatusDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators/index';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
@@ -32,7 +31,7 @@ import { email } from 'zod';
 
 @ApiTags('用户管理')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @UseInterceptors(TransformInterceptor)
 @Controller('users')
 export class UsersController {

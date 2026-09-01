@@ -2,7 +2,6 @@ import { Body, Controller, Get, Param, Patch, Post, UseGuards, ValidationPipe, Q
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { ServicesService } from './services.service';
 import { CurrentUser } from '../../common/decorators';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CreateServiceDto, ToggleServiceStatusDto, UpdateServiceDto, ParamIdDto, ServiceQueryDto, ServiceListResponseDto, ServiceResponseDto } from './dto/service.dto';
 import { User } from '@prisma/client';
@@ -14,7 +13,7 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 @ApiTags('Services')
 @Controller('services')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @UseInterceptors(TransformInterceptor)
 export class ServicesController {
   private readonly logger = new Logger(ServicesController.name);
@@ -35,7 +34,7 @@ export class ServicesController {
   }
 
   @Get('all')
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '管理员获取全部服务列表' })
   @ApiResponse({ status: 200, description: '成功获取服务列表' })
@@ -52,7 +51,7 @@ export class ServicesController {
   }
 
   @Post('admin')
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '管理员创建服务' })
   @ApiResponse({ status: 201, description: '服务创建成功' })
@@ -64,7 +63,7 @@ export class ServicesController {
   }
 
   @Patch('admin/:id')
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '管理员更新服务' })
   @ApiResponse({ status: 200, description: '服务更新成功' })
@@ -77,7 +76,7 @@ export class ServicesController {
   }
 
   @Patch('admin/:id/status')
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '管理员切换服务启用状态' })
   @ApiResponse({ status: 200, description: '服务状态更新成功' })

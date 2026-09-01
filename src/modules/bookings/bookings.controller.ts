@@ -24,7 +24,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, Roles, Permissions } from '../../common/decorators';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
@@ -46,7 +45,7 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
  */
 @ApiTags('预约管理')
 @Controller('bookings')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @UseInterceptors(TransformInterceptor)
 @ApiBearerAuth()
 export class BookingsController {

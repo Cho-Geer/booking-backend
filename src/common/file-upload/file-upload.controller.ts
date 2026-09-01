@@ -11,7 +11,6 @@ import {
   Get,
   Delete,
   Param,
-  UseGuards,
   UseInterceptors,
   UploadedFile,
   UploadedFiles,
@@ -20,7 +19,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../decorators';
 import { FileUploadService, UploadedFile as FileUploadResult } from './file-upload.service';
 
@@ -30,7 +28,6 @@ import { FileUploadService, UploadedFile as FileUploadResult } from './file-uplo
  */
 @ApiTags('文件上传')
 @Controller('upload')
-@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class FileUploadController {
   constructor(private readonly fileUploadService: FileUploadService) {}

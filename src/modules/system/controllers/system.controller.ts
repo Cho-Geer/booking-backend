@@ -15,9 +15,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
-import { Roles } from '../../../common/decorators';
+import { Roles, SkipJwtAuth } from '../../../common/decorators';
 import { SettingsService } from '../services/settings.service';
 import { ReportsService } from '../services/reports.service';
 
@@ -34,7 +33,6 @@ export class UpdateSettingDto {
  */
 @ApiTags('系统管理')
 @Controller('system')
-@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class SystemController {
   constructor(
@@ -47,6 +45,7 @@ export class SystemController {
    * @returns 公开配置列表
    */
   @Get('settings')
+  @SkipJwtAuth()
   @ApiOperation({ summary: '获取系统配置（公开配置）' })
   @ApiResponse({ status: 200, description: '获取成功' })
   async getPublicSettings() {

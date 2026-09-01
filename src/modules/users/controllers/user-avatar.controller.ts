@@ -8,21 +8,18 @@
 import {
   Controller,
   Post,
-  UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators';
 import { FileUploadService } from '../../../common/file-upload/file-upload.service';
 import { AvatarUploadInterceptor } from '../../../common/file-upload/file-upload.interceptor';
 
 @ApiTags('用户管理')
 @Controller('users')
-@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UserAvatarController {
   constructor(private readonly fileUploadService: FileUploadService) {}
