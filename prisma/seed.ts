@@ -24,6 +24,24 @@
 
 import { PrismaClient, UserType, UserStatus } from '@prisma/client';
 import * as crypto from 'crypto';
+import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * 根据 NODE_ENV 加载环境变量文件:
+ * - production → .env.production
+ * - 其他(含未设置)→ .env.development
+ * 路径基于本文件位置(__dirname),不依赖运行时的当前工作目录。
+ */
+const envFile =
+  process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+const envPath = path.join(__dirname, '..', envFile);
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else {
+  console.warn(`[seed] 环境文件不存在:${envPath},将仅使用进程内已有的环境变量`);
+}
 
 const prisma = new PrismaClient({
   log: ['info', 'warn', 'error'],
