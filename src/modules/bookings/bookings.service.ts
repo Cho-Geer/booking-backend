@@ -240,7 +240,7 @@ export class BookingsService {
       }
       if (updateAppointmentDto.customerPhone !== undefined) {
         updateData.customerPhone = updateAppointmentDto.customerPhone;
-        this.logger.log(`设置客户电话: ${updateAppointmentDto.customerPhone}`);
+        this.logger.log(`设置客户电话: ${MaskingUtil.maskPhoneNumber(updateAppointmentDto.customerPhone)}`);
       }
       if (updateAppointmentDto.customerEmail !== undefined) {
         updateData.customerEmail = updateAppointmentDto.customerEmail;
