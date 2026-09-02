@@ -70,3 +70,6 @@ desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+# JWT Bearer 证书私钥（Booking→SF integration・绝不入库）
+certs/
