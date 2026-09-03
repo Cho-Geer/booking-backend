@@ -8,6 +8,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BookingsService } from './bookings.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 import { CreateAppointmentDto, UpdateAppointmentDto, AppointmentStatusEnum } from './dto/booking.dto';
 import {
   ResourceNotFoundException,
@@ -50,6 +51,11 @@ describe('BookingsService', () => {
     sendBookingUpdate: jest.fn().mockResolvedValue(undefined),
   };
 
+  // Mock ProjectionSenderService（B-4 投影送信・RULE-08）
+  const mockProjectionSenderService = {
+    projectBooking: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,11 +68,20 @@ describe('BookingsService', () => {
           provide: EmailService,
           useValue: mockEmailService,
         },
+        {
+          provide: ProjectionSenderService,
+          useValue: mockProjectionSenderService,
+        },
       ],
     }).compile();
 
     service = module.get<BookingsService>(BookingsService);
     prismaService = module.get<PrismaService>(PrismaService);
+    mockProjectionSenderService.projectBooking.mockResolvedValue({
+      eventId: 'evt-001',
+      acceptedVersion: 1,
+      syncStatus: 'SYNCED',
+    });
   });
 
   afterEach(() => {
@@ -138,6 +153,38 @@ describe('BookingsService', () => {
           },
         },
       });
+      // B-4 投影送信（RULE-08）：create data 显式 version:1 + syncStatus:PENDING（不依赖 schema 默认 0）
+      expect(mockPrismaService.appointment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            version: 1,
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      // 事务成功返回后调用投影
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledWith('booking-123');
+    });
+
+    it('投影送信失败（projectBooking reject）不影响创建应答（C-4）', async () => {
+      const mockTimeSlot = {
+        id: 'timeslot-123',
+        isActive: true,
+        slotTime: '09:00:00',
+        durationMinutes: 30,
+      };
+
+      mockPrismaService.timeSlot.findUnique.mockResolvedValue(mockTimeSlot);
+      mockPrismaService.appointment.count.mockResolvedValue(0);
+      mockPrismaService.appointment.findFirst.mockResolvedValue(null);
+      mockPrismaService.appointment.create.mockResolvedValue(mockBooking);
+      mockProjectionSenderService.projectBooking.mockRejectedValue(new Error('投影失败'));
+
+      const result = await service.createBooking(createBookingDto);
+
+      expect(result.id).toBe('booking-123');
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
     });
 
     it('应该在串行化冲突后重试创建预约', async () => {
@@ -360,12 +407,140 @@ describe('BookingsService', () => {
       expect(result).toBeDefined();
       expect(result.status).toBe(AppointmentStatus.CONFIRMED);
       expect(result.customerName).toBe('李四');
+      // B-4 投影送信（RULE-08）：update data 合并 version:{increment:1} + syncStatus:PENDING
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'booking-123' },
+          data: expect.objectContaining({
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      // 事务 resolve 后调用投影
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledWith('booking-123');
+    });
+
+    it('仅 PII 字段更新也无条件视为变更事件（version 递增 + 投影被调・写死不做条件判断）', async () => {
+      const existingBooking = {
+        id: 'booking-123',
+        status: AppointmentStatus.PENDING,
+      };
+
+      const updatedBooking = {
+        id: 'booking-123',
+        appointmentNumber: 'AP-20240115-0001',
+        timeSlotId: 'timeslot-123',
+        userId: 'user-123',
+        status: AppointmentStatus.PENDING,
+        appointmentDate: new Date('2024-01-15'),
+        customerName: '王五',
+        customerPhone: '13800138000',
+        notes: '更新的备注',
+        confirmationSent: false,
+        reminderSent: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: { name: '王五', phoneNumber: '13800138000' },
+        timeSlot: { slotTime: '09:00:00', durationMinutes: 30 },
+      };
+
+      mockPrismaService.appointment.findUnique.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.update.mockResolvedValue(updatedBooking);
+
+      // 仅 PII 字段（customerName）的更新，DTO 无 status/timeSlotId 等业务字段
+      const piiOnlyDto: UpdateAppointmentDto = { customerName: '王五' };
+
+      const result = await service.updateBooking('booking-123', piiOnlyDto);
+
+      expect(result.customerName).toBe('王五');
+      // 无条件视为变更事件：version 递增 + syncStatus=PENDING + 投影被调
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            customerName: '王五',
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
     });
 
     it('应该抛出预约不存在的异常', async () => {
       mockPrismaService.appointment.findUnique.mockResolvedValue(null);
 
       await expect(service.updateBooking('non-existent', updateDto)).rejects.toThrow(
+        ResourceNotFoundException,
+      );
+    });
+  });
+
+  describe('cancelBooking', () => {
+    const existingBooking = {
+      id: 'booking-123',
+      userId: 'user-123',
+      status: AppointmentStatus.PENDING,
+      customerEmail: 'test@example.com',
+      customerName: '张三',
+      appointmentDate: new Date('2024-01-15'),
+      appointmentNumber: 'AP-20240115-0001',
+      notes: '测试预约',
+      confirmationSent: false,
+      reminderSent: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      timeSlot: { slotTime: '09:00:00', durationMinutes: 30 },
+      service: null,
+      user: { name: '张三', phoneNumber: '13800138000' },
+    };
+
+    const cancelledBooking = {
+      ...existingBooking,
+      status: AppointmentStatus.CANCELLED,
+      cancelledAt: new Date(),
+    };
+
+    it('应该成功取消预约：update data 含 CANCELLED + version 递增 + PENDING，且投影被调', async () => {
+      mockPrismaService.appointment.findUnique.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.update.mockResolvedValue(cancelledBooking);
+
+      const result = await service.cancelBooking('booking-123', 'user-123');
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe(AppointmentStatus.CANCELLED);
+      // B-4 投影送信（RULE-08）：update data 合并 version:{increment:1} + syncStatus:PENDING
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'booking-123' },
+          data: expect.objectContaining({
+            status: AppointmentStatus.CANCELLED,
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      // 正本更新完成后调用投影
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledWith('booking-123');
+    });
+
+    it('投影送信失败（projectBooking reject）不影响取消应答（C-4）', async () => {
+      mockPrismaService.appointment.findUnique.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.update.mockResolvedValue(cancelledBooking);
+      mockProjectionSenderService.projectBooking.mockRejectedValue(new Error('投影失败'));
+
+      const result = await service.cancelBooking('booking-123', 'user-123');
+
+      expect(result.status).toBe(AppointmentStatus.CANCELLED);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+    });
+
+    it('应该抛出预约不存在的异常', async () => {
+      mockPrismaService.appointment.findUnique.mockResolvedValue(null);
+
+      await expect(service.cancelBooking('non-existent', 'user-123')).rejects.toThrow(
         ResourceNotFoundException,
       );
     });

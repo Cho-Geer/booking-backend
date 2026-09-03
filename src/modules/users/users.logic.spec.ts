@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 import { CreateUserDto, UpdateUserDto, UserRole, UserStatus, UserType } from './dto/user.dto';
 import { ApiResponseDto, PaginationQueryDto } from '../../common/dto/api-response.dto';
 import { BusinessException } from '../../common/exceptions/business.exceptions';
@@ -48,6 +49,11 @@ const mockCacheManager = {
   del: jest.fn().mockResolvedValue(undefined),
 };
 
+// Mock ProjectionSenderService（B-4 构造函数注入所致）
+const mockProjectionSenderService = {
+  projectBooking: jest.fn().mockResolvedValue({ eventId: 'evt-001', syncStatus: 'SYNCED' }),
+};
+
 describe('UsersService Logic', () => {
   let service: UsersService;
 
@@ -70,6 +76,10 @@ describe('UsersService Logic', () => {
         {
           provide: CACHE_MANAGER,
           useValue: mockCacheManager,
+        },
+        {
+          provide: ProjectionSenderService,
+          useValue: mockProjectionSenderService,
         },
       ],
     }).compile();

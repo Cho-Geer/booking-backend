@@ -13,12 +13,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FileUploadModule } from '../../common/file-upload/file-upload.module';
 import { EmailModule } from '../email/email.module';
 import { JwtService } from '@nestjs/jwt';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
   imports: [
     PrismaModule,
     FileUploadModule,
     EmailModule,
+    IntegrationsModule, // B-4 级联取消投影送信
   ],
   controllers: [UsersController, UserAvatarController],
   providers: [

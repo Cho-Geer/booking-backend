@@ -18,6 +18,7 @@ import {
   ResourceConflictException,
   BusinessRuleException,
 } from '../../common/exceptions/business.exceptions';
+import { ProjectionSenderService } from './projection-sender.service';
 
 /**
  * 集成命令服务类
@@ -25,7 +26,10 @@ import {
  */
 @Injectable()
 export class IntegrationCommandsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectionSenderService: ProjectionSenderService,
+  ) {}
 
   /**
    * 执行预约取消命令
@@ -134,6 +138,15 @@ export class IntegrationCommandsService {
 
       return updated.version;
     });
+
+    // B-4 投影送信（RULE-08・IF-01）：命令取消事务 resolve 后同步呼出（tx 内已含 version 递增 + syncStatus=PENDING，
+    // 无需改动）；失败不影响正本応答（同期呼出・C-4）。
+    // 已知行为：与 SF 侧 F-26 写回同 version 双写必有一方 409（F-26 侧 skip 设计，非缺陷）
+    try {
+      await this.projectionSenderService.projectBooking(dto.bookingExternalId);
+    } catch {
+      // 投影失敗不影响正本応答（同期呼出・C-4）
+    }
 
     // 7. 返回受理结果
     return {

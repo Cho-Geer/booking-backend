@@ -23,6 +23,7 @@ import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { MaskingUtil } from '../../common/utils/masking.util';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 
 @Injectable()
 export class UsersService {
@@ -35,6 +36,7 @@ export class UsersService {
     private emailService: EmailService,
     private jwtService: JwtService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private projectionSenderService: ProjectionSenderService,
   ) {}
 
   /**
@@ -247,6 +249,9 @@ export class UsersService {
       appointmentNumber: string;
       notes?: string;
     }> = [];
+
+    // B-4 投影送信（RULE-08・IF-01）：受影响预约 id 清单（事务 resolve 后逐条投影）
+    const cancelledBookingIds: string[] = [];
   
     const user = await this.prisma.$transaction(async (tx) => {
       const existingUser = await tx.user.findUnique({
@@ -313,9 +318,14 @@ export class UsersService {
               status: AppointmentStatus.CANCELLED,
               cancelledAt: new Date(),
               updatedAt: new Date(),
+              // B-4 投影送信（RULE-08）：version 递增 + syncStatus=PENDING
+              version: { increment: 1 },
+              syncStatus: 'PENDING',
             },
           });
-      
+
+          cancelledBookingIds.push(booking.id);
+
           // メール送信情報を保存（トランザクション外で送信）
           if (booking.customerEmail) {
             bookingsToNotify.push({
@@ -342,7 +352,17 @@ export class UsersService {
       this.logger.log(`ユーザー状態更新成功：${id}`);
       return updatedUser;
     });
-  
+
+    // B-4 投影送信（RULE-08・IF-01）：级联取消事务 resolve 后对受影响预约逐条同步呼出，
+    // 失败不影响正本応答（同期呼出・C-4）
+    for (const bookingId of cancelledBookingIds) {
+      try {
+        await this.projectionSenderService.projectBooking(bookingId);
+      } catch {
+        // 投影失敗不影响正本応答（同期呼出・C-4）
+      }
+    }
+
     // トランザクションの外でメール送信（非同期）
     // 1. 予約キャンセル通知メール
     for (const booking of bookingsToNotify) {

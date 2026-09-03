@@ -6,6 +6,7 @@ import { Service } from '@prisma/client';
 import { CreateServiceDto, UpdateServiceDto, ToggleServiceStatusDto, ServiceListResponseDto, ServiceQueryDto, ServiceResponseDto } from './dto/service.dto';
 import { DatabaseException } from '../../common/exceptions/business.exceptions';
 import { EmailService } from '../email/email.service';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 
 @Injectable()
 export class ServicesService {
@@ -14,6 +15,7 @@ export class ServicesService {
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
+    private projectionSenderService: ProjectionSenderService,
   ) {}
 
   async findAll(): Promise<Service[]> {
@@ -198,6 +200,9 @@ export class ServicesService {
       notes?: string;
     }> = [];
 
+    // B-4 投影送信（RULE-08・IF-01）：受影响预约 id 清单（事务 resolve 后逐条投影）
+    const cancelledBookingIds: string[] = [];
+
     const service = await this.prisma.$transaction(async (tx) => {
       const existingService = await tx.service.findUnique({
         where: { id },
@@ -234,8 +239,13 @@ export class ServicesService {
               status: AppointmentStatus.CANCELLED,
               cancelledAt: new Date(),
               updatedAt: new Date(),
+              // B-4 投影送信（RULE-08）：version 递增 + syncStatus=PENDING
+              version: { increment: 1 },
+              syncStatus: 'PENDING',
             },
           });
+
+          cancelledBookingIds.push(booking.id);
 
           // メール送信情報を保存（トランザクション外で送信）
           if (booking.customerEmail) {
@@ -265,6 +275,16 @@ export class ServicesService {
       this.logger.log(`Service status toggled successfully: ${id}`);
       return service;
     });
+
+    // B-4 投影送信（RULE-08・IF-01）：级联取消事务 resolve 后对受影响预约逐条同步呼出，
+    // 失败不影响正本応答（同期呼出・C-4）
+    for (const bookingId of cancelledBookingIds) {
+      try {
+        await this.projectionSenderService.projectBooking(bookingId);
+      } catch {
+        // 投影失敗不影响正本応答（同期呼出・C-4）
+      }
+    }
 
     // トランザクションの外でメール送信（非同期）
     for (const booking of bookingsToNotify) {

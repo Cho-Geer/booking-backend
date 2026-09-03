@@ -41,6 +41,11 @@ describe('IntegrationCommandsService', () => {
     $transaction: jest.fn(async (fn: (tx: any) => Promise<any>) => fn(mockPrismaService)),
   };
 
+  // Mock ProjectionSenderService（B-4 投影送信）
+  const mockProjectionSenderService = {
+    projectBooking: jest.fn(),
+  };
+
   let service: IntegrationCommandsService;
 
   // 公共测试数据
@@ -83,8 +88,16 @@ describe('IntegrationCommandsService', () => {
       cancelledAt: new Date(),
     });
     mockPrismaService.integrationCommand.create.mockResolvedValue({ id: 'cmd-row-1' });
+    mockProjectionSenderService.projectBooking.mockResolvedValue({
+      eventId: 'evt-001',
+      acceptedVersion: 2,
+      syncStatus: 'SYNCED',
+    });
 
-    service = new IntegrationCommandsService(mockPrismaService as any);
+    service = new IntegrationCommandsService(
+      mockPrismaService as any,
+      mockProjectionSenderService as any,
+    );
   });
 
   describe('TC-20 幂等先行（RULE-03）', () => {
@@ -299,6 +312,55 @@ describe('IntegrationCommandsService', () => {
         canonicalVersion: 2,
         resultCode: 'SUCCESS',
       });
+    });
+  });
+
+  describe('B-4 投影送信（RULE-08・IF-01）', () => {
+    it('TC-25 扩展：$transaction resolve 后 projectBooking 被调用（bookingExternalId）', async () => {
+      const result = await service.executeCancelCommand(buildDto());
+
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledWith(
+        '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+      );
+      // 投影调用发生在事务成功后
+      const txOrder = mockPrismaService.$transaction.mock.invocationCallOrder[0];
+      const projectionOrder = mockProjectionSenderService.projectBooking.mock.invocationCallOrder[0];
+      expect(projectionOrder).toBeGreaterThan(txOrder);
+      expect(result).toEqual({
+        httpStatus: 200,
+        canonicalVersion: 2,
+        resultCode: 'SUCCESS',
+      });
+    });
+
+    it('投影 reject 不影响既有断言（仍返回 200 受理结果・C-4）', async () => {
+      mockProjectionSenderService.projectBooking.mockRejectedValue(new Error('投影失败'));
+
+      const result = await service.executeCancelCommand(buildDto());
+
+      expect(result).toEqual({
+        httpStatus: 200,
+        canonicalVersion: 2,
+        resultCode: 'SUCCESS',
+      });
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.integrationCommand.create).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+    });
+
+    it('幂等命中/前置校验失败路径不触发投影（无正本变更即无投影）', async () => {
+      mockPrismaService.integrationCommand.findUnique.mockResolvedValue({
+        id: 'row-1',
+        commandId: 'cmd-001',
+        httpStatus: 200,
+        resultCode: 'SUCCESS',
+        canonicalVersion: 3,
+      });
+
+      await service.executeCancelCommand(buildDto());
+
+      expect(mockProjectionSenderService.projectBooking).not.toHaveBeenCalled();
     });
   });
 

@@ -9,6 +9,7 @@ import { NotFoundException } from '@nestjs/common';
 import { ServicesService } from './services.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 import { CreateServiceDto, UpdateServiceDto, ToggleServiceStatusDto, ServiceQueryDto } from './dto/service.dto';
 import { DatabaseException } from '../../common/exceptions/business.exceptions';
 import { AppointmentStatus } from '@prisma/client';
@@ -34,6 +35,11 @@ const mockEmailService = {
   sendBookingUpdate: jest.fn().mockResolvedValue(undefined),
 };
 
+// Mock ProjectionSenderService（B-4 级联取消投影送信）
+const mockProjectionSenderService = {
+  projectBooking: jest.fn(),
+};
+
 describe('ServicesService', () => {
   let service: ServicesService;
 
@@ -43,10 +49,15 @@ describe('ServicesService', () => {
         ServicesService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: EmailService, useValue: mockEmailService },
+        { provide: ProjectionSenderService, useValue: mockProjectionSenderService },
       ],
     }).compile();
 
     service = module.get<ServicesService>(ServicesService);
+    mockProjectionSenderService.projectBooking.mockResolvedValue({
+      eventId: 'evt-001',
+      syncStatus: 'SYNCED',
+    });
     jest.clearAllMocks();
   });
 
@@ -235,6 +246,83 @@ describe('ServicesService', () => {
 
       expect(result.isActive).toBe(false);
       expect(mockEmailService.sendBookingCancellation).toHaveBeenCalled();
+      // B-4 投影送信（RULE-08）：级联取消 update data 含 version 递增 + syncStatus=PENDING
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'booking-id' },
+          data: expect.objectContaining({
+            status: AppointmentStatus.CANCELLED,
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      // 事务 resolve 后对受影响预约调用投影
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledWith('booking-id');
+    });
+
+    it('禁用服务时对多个受影响预约逐条投影（每个 id 各一次・C-4 投影失败不影响应答）', async () => {
+      const existingService = {
+        id: 'service-id',
+        name: '服务',
+        isActive: true,
+      };
+
+      const activeBookings = [
+        {
+          id: 'booking-1',
+          customerEmail: 'a@example.com',
+          customerName: 'A',
+          appointmentDate: new Date(),
+          timeSlot: { slotTime: '09:00:00' },
+          service: { name: '服务' },
+          appointmentNumber: 'AP-001',
+        },
+        {
+          id: 'booking-2',
+          customerEmail: 'b@example.com',
+          customerName: 'B',
+          appointmentDate: new Date(),
+          timeSlot: { slotTime: '10:00:00' },
+          service: { name: '服务' },
+          appointmentNumber: 'AP-002',
+        },
+      ];
+
+      mockPrismaService.service.findUnique.mockResolvedValue(existingService);
+      mockPrismaService.appointment.findMany.mockResolvedValue(activeBookings);
+      mockPrismaService.appointment.update.mockResolvedValue({
+        id: 'booking-x',
+        status: AppointmentStatus.CANCELLED,
+      });
+      mockPrismaService.service.update.mockResolvedValue({
+        ...existingService,
+        isActive: false,
+      });
+      // 第二条投影失败：不影响应答（C-4）
+      mockProjectionSenderService.projectBooking
+        .mockResolvedValueOnce({ eventId: 'e1', syncStatus: 'SYNCED' })
+        .mockRejectedValueOnce(new Error('投影失败'));
+
+      const result = await service.toggleServiceStatus('service-id', toggleDto);
+
+      expect(result.isActive).toBe(false);
+      // 受影响 id 逐条投影被调
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(2);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenNthCalledWith(1, 'booking-1');
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenNthCalledWith(2, 'booking-2');
+      // 每条 update 均含 version 递增 + PENDING
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledTimes(2);
+      for (const call of mockPrismaService.appointment.update.mock.calls) {
+        expect(call[0].data).toEqual(
+          expect.objectContaining({
+            status: AppointmentStatus.CANCELLED,
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        );
+      }
     });
 
     it('应该抛出服务不存在异常', async () => {

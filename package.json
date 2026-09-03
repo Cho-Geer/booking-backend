@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.0.2",
+    "@nestjs/axios": "^3.1.3",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
@@ -49,6 +50,7 @@
     "@nestjs/websockets": "^10.4.20",
     "@prisma/client": "^6.16.2",
     "@types/cache-manager-redis-store": "^3.0.0",
+    "axios": "^1.20.0",
     "bcrypt": "^5.1.0",
     "cache-manager": "^7.2.0",
     "cache-manager-redis-store": "^3.0.1",

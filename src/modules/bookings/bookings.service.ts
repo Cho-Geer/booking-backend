@@ -26,6 +26,7 @@ import {
 import { Prisma, AppointmentStatus, UserType } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { MaskingUtil } from '../../common/utils/masking.util';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 
 @Injectable()
 export class BookingsService {
@@ -38,7 +39,8 @@ export class BookingsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly projectionSenderService: ProjectionSenderService,
   ) {}
 
   /**
@@ -84,6 +86,14 @@ export class BookingsService {
         serviceId,
         appointmentNumber,
       );
+
+      // B-4 投影送信（RULE-08・IF-01・DD-02 §2.4）：正本写入（version=1・PENDING）完成后同步呼出，
+      // 置于 P2034 重试循环之外；失败不影响正本応答（同期呼出・C-4）
+      try {
+        await this.projectionSenderService.projectBooking(appointment.id);
+      } catch {
+        // 投影失敗不影响正本応答（同期呼出・C-4）
+      }
 
       // Send confirmation email asynchronously
       // We do not await this to prevent blocking the response
@@ -315,7 +325,12 @@ export class BookingsService {
         // 执行更新
         return tx.appointment.update({
           where: { id },
-          data: updateData,
+          data: {
+            ...updateData,
+            // B-4 投影送信（RULE-08）：空 DTO/仅 PII 字段更新亦无条件视为变更事件（写死，不做条件判断）
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          },
           include: {
             timeSlot: true,
             user: true,
@@ -325,6 +340,13 @@ export class BookingsService {
       });
 
       this.logger.log(`预约更新成功: ${appointment.id}`);
+
+      // B-4 投影送信（RULE-08・IF-01）：事务 resolve 后同步呼出，失败不影响正本応答（同期呼出・C-4）
+      try {
+        await this.projectionSenderService.projectBooking(appointment.id);
+      } catch {
+        // 投影失敗不影响正本応答（同期呼出・C-4）
+      }
 
       // Send update email asynchronously
       if (appointment.customerEmail) {
@@ -405,7 +427,10 @@ export class BookingsService {
         data: { 
           status: AppointmentStatus.CANCELLED,
           cancelledAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
+          // B-4 投影送信（RULE-08）：version 递增 + syncStatus=PENDING
+          version: { increment: 1 },
+          syncStatus: 'PENDING',
         },
         include: {
           timeSlot: true,
@@ -413,6 +438,13 @@ export class BookingsService {
           service: true
         }
       });
+
+      // B-4 投影送信（RULE-08・IF-01）：正本更新完成后同步呼出，失败不影响正本応答（同期呼出・C-4）
+      try {
+        await this.projectionSenderService.projectBooking(appointment.id);
+      } catch {
+        // 投影失敗不影响正本応答（同期呼出・C-4）
+      }
 
       // Send cancellation email asynchronously
       if (appointment.customerEmail) {
@@ -744,6 +776,9 @@ export class BookingsService {
               customerWechat: createAppointmentDto.customerWechat,
               notes: createAppointmentDto.notes,
               status: AppointmentStatus.PENDING,
+              // B-4 投影送信（RULE-08）：显式 version=1・syncStatus=PENDING（SF 侧校验 version>=1，不依赖 schema 默认 0）
+              version: 1,
+              syncStatus: 'PENDING',
             },
             include: {
               timeSlot: true,

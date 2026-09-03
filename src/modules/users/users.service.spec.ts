@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { ProjectionSenderService } from '../integrations/projection-sender.service';
 import { CreateUserDto, UpdateUserDto, QueryUserDto } from './dto/user.dto';
 import { EmailExistsException, PhoneNumberExistsException, ResourceNotFoundException, DatabaseException } from '../../common/exceptions/business.exceptions';
 import { PaginationQueryDto } from '../../common/dto/api-response.dto';
@@ -53,6 +54,11 @@ const mockCacheManager = {
   del: jest.fn().mockResolvedValue(undefined),
 };
 
+// Mock ProjectionSenderService（B-4 级联取消投影送信）
+const mockProjectionSenderService = {
+  projectBooking: jest.fn(),
+};
+
 describe('UsersService', () => {
   let service: UsersService;
   let prisma: PrismaService;
@@ -77,11 +83,19 @@ describe('UsersService', () => {
           provide: CACHE_MANAGER,
           useValue: mockCacheManager,
         },
+        {
+          provide: ProjectionSenderService,
+          useValue: mockProjectionSenderService,
+        },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
     prisma = module.get<PrismaService>(PrismaService);
+    mockProjectionSenderService.projectBooking.mockResolvedValue({
+      eventId: 'evt-001',
+      syncStatus: 'SYNCED',
+    });
 
     // 清除所有mock
     jest.clearAllMocks();
@@ -266,6 +280,108 @@ describe('UsersService', () => {
 
       await expect(service.deleteUser(userId)).rejects.toThrow(ResourceNotFoundException);
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('toggleUserStatus（级联取消・B-4 投影送信）', () => {
+    const existingUser = {
+      id: 'user-1',
+      name: '测试用户',
+      phone: '138****8000',
+      email: 'test@example.com',
+      userType: 'CUSTOMER',
+      status: 'ACTIVE',
+      remarks: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const activeBooking = {
+      id: 'booking-1',
+      userId: 'user-1',
+      customerEmail: 'a@example.com',
+      customerName: 'A',
+      appointmentDate: new Date(),
+      timeSlot: { slotTime: '09:00:00' },
+      service: { name: '服务' },
+      appointmentNumber: 'AP-001',
+    };
+
+    it('用户状态从 ACTIVE 变更为 INACTIVE 时取消预约：update data 含 version 递增 + PENDING，且投影被调', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(existingUser);
+      mockPrismaService.userSession.findMany.mockResolvedValue([]);
+      mockPrismaService.appointment.findMany.mockResolvedValue([activeBooking]);
+      mockPrismaService.appointment.update.mockResolvedValue({
+        ...activeBooking,
+        status: 'CANCELLED',
+      });
+      mockPrismaService.user.update.mockResolvedValue({
+        ...existingUser,
+        status: 'INACTIVE',
+      });
+
+      const result = await service.toggleUserStatus('user-1', UserStatus.INACTIVE);
+
+      expect(result.status).toBe('INACTIVE');
+      // B-4 投影送信（RULE-08）：级联取消 update data 含 version 递增 + syncStatus=PENDING
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'booking-1' },
+          data: expect.objectContaining({
+            status: 'CANCELLED',
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      // 事务 resolve 后对受影响预约调用投影
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledWith('booking-1');
+    });
+
+    it('多个受影响预约逐条投影；投影失败不影响应答（C-4）', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(existingUser);
+      mockPrismaService.userSession.findMany.mockResolvedValue([]);
+      mockPrismaService.appointment.findMany.mockResolvedValue([
+        activeBooking,
+        { ...activeBooking, id: 'booking-2', customerEmail: 'b@example.com' },
+      ]);
+      mockPrismaService.appointment.update.mockResolvedValue({
+        ...activeBooking,
+        status: 'CANCELLED',
+      });
+      mockPrismaService.user.update.mockResolvedValue({
+        ...existingUser,
+        status: 'INACTIVE',
+      });
+      mockProjectionSenderService.projectBooking
+        .mockResolvedValueOnce({ eventId: 'e1', syncStatus: 'SYNCED' })
+        .mockRejectedValueOnce(new Error('投影失败'));
+
+      const result = await service.toggleUserStatus('user-1', UserStatus.INACTIVE);
+
+      expect(result.status).toBe('INACTIVE');
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(2);
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenNthCalledWith(1, 'booking-1');
+      expect(mockProjectionSenderService.projectBooking).toHaveBeenNthCalledWith(2, 'booking-2');
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('用户从 INACTIVE 复激活为 ACTIVE（非 ACTIVE→ACTIVE・无级联取消路径）时不触发投影', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...existingUser,
+        status: 'INACTIVE',
+      });
+      mockPrismaService.user.update.mockResolvedValue({
+        ...existingUser,
+        status: 'ACTIVE',
+      });
+
+      const result = await service.toggleUserStatus('user-1', UserStatus.ACTIVE);
+
+      expect(result.status).toBe('ACTIVE');
+      expect(mockPrismaService.appointment.update).not.toHaveBeenCalled();
+      expect(mockProjectionSenderService.projectBooking).not.toHaveBeenCalled();
     });
   });
 
