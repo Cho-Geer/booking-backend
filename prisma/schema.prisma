@@ -78,6 +78,7 @@ model User {
   activityLogs      ActivityLog[]
   blockedSlots      BlockedTimeSlot[]
   systemLogs        SystemLog[]
+  staticOperatorMappings StaticOperatorMapping[]
 
   @@index([phoneHash])
   @@index([status])
@@ -386,4 +387,23 @@ model IntegrationCommand {
 
   @@index([appointmentId])
   @@map("integration_commands")
+}
+
+/**
+ * 静态操作员映射（P0-3 B-2・IF-02 §4.3・RULE-12）
+ * Salesforce 操作员（salesforceUserId）→ Booking 内部用户（bookingUserId）的静态映射。
+ * 取消命令受理前校验操作员身份：映射存在且 active=true、映射用户为 ADMIN 且 ACTIVE 方可受理（DD-02 §2.3 顺序 2）。
+ */
+model StaticOperatorMapping {
+  id               String   @id @default(uuid()) @db.Uuid
+  salesforceUserId String   @unique @map("salesforce_user_id") @db.VarChar(64)
+  bookingUserId    String   @map("booking_user_id") @db.Uuid
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  bookingUser      User     @relation(fields: [bookingUserId], references: [id])
+
+  @@index([bookingUserId])
+  @@map("static_operator_mappings")
 }

@@ -19,6 +19,7 @@ import { FileUploadModule } from './common/file-upload/file-upload.module';
 import { WebsocketModule } from './common/websocket/websocket.module';
 import { HealthModule } from './common/health/health.module';
 import { RetentionModule } from './modules/retention/retention.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 /**
  * 主应用模块
@@ -82,6 +83,7 @@ import { RetentionModule } from './modules/retention/retention.module';
     TimeSlotsModule,
     EmailModule,
     RetentionModule,
+    IntegrationsModule,
   ],
   providers: [
     // 全局认证守卫：默认所有路由需要 JWT，公开路由用 @SkipJwtAuth() 标记

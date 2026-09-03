@@ -89,10 +89,15 @@ export class ResourceConflictException extends BusinessException {
 
 /**
  * 业务规则异常
+ * 第三参 status 可覆盖默认 400（P0-3 B-2・DD-02 §2.3 顺序 4 状态迁移失败按 409 返回）
  */
 export class BusinessRuleException extends BusinessException {
-  constructor(message = '业务规则违反', details?: any) {
-    super('BUSINESS_RULE_VIOLATION', message, HttpStatus.BAD_REQUEST, details);
+  constructor(
+    message = '业务规则违反',
+    details?: any,
+    status: HttpStatus = HttpStatus.BAD_REQUEST
+  ) {
+    super('BUSINESS_RULE_VIOLATION', message, status, details);
   }
 }
 
