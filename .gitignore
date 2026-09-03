@@ -73,3 +73,6 @@ desktop.ini
 
 # JWT Bearer 证书私钥（Booking→SF integration・绝不入库）
 certs/
+
+# Mimosa 插件 hook 状态目录（工具产物，不入库）
+.mimosa/

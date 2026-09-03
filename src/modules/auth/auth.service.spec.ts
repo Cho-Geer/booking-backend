@@ -4,6 +4,7 @@
  * @since 2024
  */
 
+import { randomUUID } from 'crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -234,6 +235,9 @@ describe('AuthService', () => {
   });
 
   describe('refreshToken', () => {
+    // 仅用于喂给 mock 的夹具令牌,运行期随机生成,无任何真实凭据含义
+    const MOCK_REFRESH_TOKEN = randomUUID();
+
     it('JWT_EXPIRES_IN 为数字字符串时应返回对应秒数', async () => {
       const mockUser = {
         id: 'user-id',
@@ -247,7 +251,7 @@ describe('AuthService', () => {
       mockCacheManager.get.mockResolvedValue(undefined);
       mockUsersService.findUserById.mockResolvedValue(mockUser);
 
-      const result = await service.refreshToken({ refreshToken: 'valid-refresh-token' });
+      const result = await service.refreshToken({ refreshToken: MOCK_REFRESH_TOKEN });
 
       expect(result.expiresIn).toBe(900);
     });

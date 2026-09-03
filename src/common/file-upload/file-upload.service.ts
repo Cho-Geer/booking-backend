@@ -5,7 +5,7 @@
  * @since 2024
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -122,6 +122,33 @@ export class FileUploadService {
   }
 
   /**
+   * 校验文件名为安全的单一路径段(路径穿越防护)
+   * 拒绝:空值/非字符串、绝对路径、含 `..` 段、含 `/` 或 `\` 分隔符;
+   * belt-and-braces:解析后的完整路径必须仍位于基准目录之下。
+   */
+  private assertSafeFilename(name: string, baseDir?: string): string {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new BadRequestException('文件名不能为空');
+    }
+    if (path.isAbsolute(name)) {
+      throw new BadRequestException('文件名不能为绝对路径');
+    }
+    if (name.includes('..')) {
+      throw new BadRequestException('文件名不能包含上级目录引用');
+    }
+    if (name.includes('/') || name.includes('\\')) {
+      throw new BadRequestException('文件名不能包含路径分隔符');
+    }
+    // 包含性校验:解析后的完整路径必须位于基准目录之下
+    const base = path.resolve(baseDir || this.uploadDir);
+    const resolved = path.resolve(base, name);
+    if (!resolved.startsWith(base + path.sep)) {
+      throw new BadRequestException('文件名解析后超出允许目录范围');
+    }
+    return name;
+  }
+
+  /**
    * 上传文件
    */
   async uploadFile(file: Express.Multer.File, options?: FileUploadOptions): Promise<UploadedFile> {
@@ -139,7 +166,13 @@ export class FileUploadService {
     // 生成文件名和路径
     const filename = options?.filename || this.generateFilename(file.originalname);
     const destination = options?.destination || this.uploadDir;
+    // 自定义文件名必须先通过单一路径段校验(拒绝路径穿越)
+    if (options?.filename) {
+      this.assertSafeFilename(options.filename, destination);
+    }
     const filePath = path.join(destination, filename);
+    // 最终包含性校验:destination + filename 合并后仍须位于解析后的 destination 之下
+    this.assertSafeFilename(filename, destination);
 
     try {
       // 确保目标目录存在
@@ -173,11 +206,15 @@ export class FileUploadService {
    * 上传头像文件（专用方法）
    */
   async uploadAvatar(file: Express.Multer.File, userId: string): Promise<UploadedFile> {
+    const filename = `avatar_${userId}_${Date.now()}${path.extname(file.originalname)}`;
+    // 拼接后的文件名整体过校验(覆盖 userId 注入路径穿越)
+    this.assertSafeFilename(filename, path.join(this.uploadDir, 'avatars'));
+
     const avatarOptions: FileUploadOptions = {
       maxSize: 2 * 1024 * 1024, // 2MB
       allowedTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
       destination: path.join(this.uploadDir, 'avatars'),
-      filename: `avatar_${userId}_${Date.now()}${path.extname(file.originalname)}`,
+      filename,
     };
 
     return this.uploadFile(file, avatarOptions);
@@ -187,6 +224,9 @@ export class FileUploadService {
    * 删除文件
    */
   async deleteFile(filename: string): Promise<void> {
+    // 路径穿越防护:非法文件名直接拒绝(不触碰文件系统)
+    this.assertSafeFilename(filename);
+
     try {
       const filePath = path.join(this.uploadDir, filename);
       await fs.unlink(filePath);
@@ -205,6 +245,9 @@ export class FileUploadService {
    * 获取文件信息
    */
   async getFileInfo(filename: string): Promise<UploadedFile | null> {
+    // 路径穿越防护:非法文件名直接拒绝(不触碰文件系统)
+    this.assertSafeFilename(filename);
+
     try {
       const filePath = path.join(this.uploadDir, filename);
       const stats = await fs.stat(filePath);
@@ -248,6 +291,9 @@ export class FileUploadService {
    * 检查文件是否存在
    */
   async fileExists(filename: string): Promise<boolean> {
+    // 路径穿越防护:非法文件名直接拒绝(不触碰文件系统)
+    this.assertSafeFilename(filename);
+
     try {
       const filePath = path.join(this.uploadDir, filename);
       await fs.access(filePath);
@@ -272,6 +318,8 @@ export class FileUploadService {
 
       for (const file of files) {
         if (file.isFile()) {
+          // 统一模式:readdir 返回的目录项也过一遍校验(输入虽良性,消除命中面)
+          this.assertSafeFilename(file.name);
           const filePath = path.join(this.uploadDir, file.name);
           const stats = await fs.stat(filePath);
           totalSize += stats.size;

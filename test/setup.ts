@@ -10,6 +10,7 @@ import { PrismaService } from '../src/modules/prisma/prisma.service';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
+import { randomBytes } from 'crypto';
 
 // 全局变量存储容器实例
 let postgresContainer: StartedTestContainer;
@@ -21,12 +22,15 @@ let prismaService: PrismaService;
 export default async function globalSetup(): Promise<void> {
   console.log('🚀 启动PostgreSQL测试容器...');
   
+  // 每次运行生成随机容器密码,避免硬编码凭据
+  const testDbPassword = randomBytes(12).toString('hex');
+
   // 启动PostgreSQL容器
   postgresContainer = await new GenericContainer('postgres:16-alpine')
     .withEnvironment({
       POSTGRES_DB: 'booking_system_test',
       POSTGRES_USER: 'test_user',
-      POSTGRES_PASSWORD: 'test_password',
+      POSTGRES_PASSWORD: testDbPassword,
     })
     .withExposedPorts(5432)
     .start();
@@ -34,7 +38,7 @@ export default async function globalSetup(): Promise<void> {
   // 设置环境变量
   const host = postgresContainer.getHost();
   const port = postgresContainer.getMappedPort(5432);
-  const connectionString = `postgresql://test_user:test_password@${host}:${port}/booking_system_test`;
+  const connectionString = `postgresql://test_user:${testDbPassword}@${host}:${port}/booking_system_test`;
   process.env.DATABASE_URL = connectionString;
   process.env.NODE_ENV = 'test';
   process.env.MAIL_DISABLE_TEMPLATES = 'true';
@@ -42,7 +46,7 @@ export default async function globalSetup(): Promise<void> {
   // 将容器实例存储到全局变量
   (global as any).postgresContainer = postgresContainer;
 
-  console.log(`✅ PostgreSQL容器已启动: ${connectionString}`);
+  console.log(`✅ PostgreSQL测试容器已启动: ${host}:${port}/booking_system_test`);
 
   // 运行数据库迁移
   try {
