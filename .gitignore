@@ -17,6 +17,8 @@
 !/docs/monitoring-feedback-plan.md # 监控反馈计划，项目管理记录
 !/docs/implementation-completion-report.md # 项目完成报告，成果总结
 !/docs/developer-notification-template.md # 开发者通知模板，沟通参考
+# 手动重试手顺书（B-7）运维参考用
+!/docs/manual-retry-procedure.md
 # 内部文档（不应提交）
 /docs/private/                  # 内部决策、计划和临时文档
 /logs/*
