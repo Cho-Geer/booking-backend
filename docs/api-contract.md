@@ -4,6 +4,8 @@ This document is the detailed API contract for this branch.
 
 Use this file as the single source of truth for frontend/backend integration details. The READMEs intentionally stay shorter and should defer to this document for endpoint-level behavior.
 
+> Server-to-server integration endpoints (IF-01/IF-02, IntegrationGuard) are out of scope here — see the Salesforce repo design docs (interface-design.md BD-09 / module-design.md DD-02) and docs/manual-retry-procedure.md.
+
 Base URL in local development:
 
 ```text
