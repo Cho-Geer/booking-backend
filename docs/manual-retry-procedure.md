@@ -287,15 +287,15 @@ SET booking_user_id = EXCLUDED.booking_user_id,
 
 **結論**: RULE-03 冪等リトライが動作確認できた（二重 POST でも正本への副作用は 1 回分のみ・コマンド行は 1 行）。
 
-### 7.2 実機セグメント（未実施・前提チェックリスト）
+### 7.2 実機セグメント（実施済・2026-09-05・前提チェックリスト＋実施記録）
 
 本番相当での実施前に、以下を確認・実施すること。
 
-- [ ] SF NC URL を実 URL 化する（現 placeholder: `https://booking.example.com`）
-- [ ] EC `guardSecret` と Booking 側 `INTEGRATION_TOKEN` を同値化する
-- [ ] `SF_PROJECTION_ENABLED=true` に設定する
-- [ ] B-5 マッピング（StaticOperatorMapping）登録済であること
-- [ ] `.env` 変更後、プロセスを再起動すること（fail-closed 500 回避）
+- [x] SF NC URL を実 URL 化する（現 placeholder: `https://booking.example.com`） **【実施 2026-09-05・拍板 β 偏差注記】**＝一次性 cloudflared 隧道 URL（Setup UI で NC `Booking_Integration_API` に当日 URL を設定。NC metadata は Url 値を含まないため版庫漂移なし・公網化＝P0-5 繰越）
+- [x] EC `guardSecret` と Booking 側 `INTEGRATION_TOKEN` を同値化する **【実施・実証済 2026-09-05】**＝MV-08 で IntegrationGuard 通過（401 なし）により同値性を実機実証
+- [x] `SF_PROJECTION_ENABLED=true` に設定する **【実施済 2026-09-05】**（`.env.development`）
+- [x] B-5 マッピング（StaticOperatorMapping）登録済であること **【登録済 2026-09-04・6.2 参照】**
+- [x] `.env` 変更後、プロセスを再起動すること（fail-closed 500 回避） **【実施済 2026-09-05】**
 
 **実施内容（想定）**: 第3章の Apex 再 enqueue の全流程。
 
@@ -303,3 +303,27 @@ SET booking_user_id = EXCLUDED.booking_user_id,
 
 - SF 側: 対象コマンドの SOQL による変更前後の読取値（`Status__c` / `AttemptCount__c` / `NextAttemptAt__c` / `ResultCode__c` / `LastError__c`）。
 - Booking 側: psql による変更前後の読取値（`appointments.status` / `version` / `syncStatus`、`integration_commands` 行数・内容）。
+
+### 7.2.1 実施記録（2026-09-05）
+
+**FAILED 誘発**（隧道中断→HTTP 530×3）:
+
+- 対象コマンド: `CMD-00002`（commandId `7c9e6679-…`）
+- 結果: HTTP 530 ×3 → **FAILED / SYSTEM_ERROR / AttemptCount=3**（`72-failed-induction.json`・chogeer `.tmp-p04-evidence/`）
+
+**手動 Retry 成功**（第3章手順どおり・RESET DML＋再 enqueue）:
+
+| 確認項目 | 期待 | 実測 |
+| --- | --- | --- |
+| 第 3 章手順実行後のコマンド終态 | SUCCEEDED | SUCCEEDED |
+| HttpStatus / LastError | 200 / null（自己消滅） | 200 / null（自己消滅実証） |
+| 正本（B-00001） | CANCELLED / version 1 / SYNCED | CANCELLED / v1 / SYNCED |
+| `integration_commands` 行数（同 commandId） | ちょうど 1 行 | 1 行 |
+| correlation_id | 同値維持 | 同値 |
+
+（証拠: `72-manual-retry-success.json`）
+
+**86② 観察（既知乖離・CHK-02:86②）**:
+
+- 取消コマンド本体・正本・コマンド記録は**全成功**につき、Booking 側再投影（`projectBooking`）の `appointments.syncStatus=ERROR` のみ観測（SF 行 owner=admin に integration user 不可視で再投影 update 不可・SF 側新行なし）。
+- **ユーザー拍板（2026-09-05）＝C 方案「デモ予約 ID 分離＋記録方式」**：乖離データは修復せず既知偏差として文書化・demo 用予約 ID を分離管理（CHK-02 S-3 登記②に処置記録済・CHK-03 §6 参照）。
