@@ -372,7 +372,16 @@ export class AuthService {
         throw new ResourceNotFoundException('用户不存在');
       }
 
-      return this.mapToResponseDto(user);
+      // P0-4：Salesforce 静态操作员映射是否启用（RULE-12・IF-02 §4.3）
+      // active 判定谓词与 integration-commands.service.ts 的 active 校验同一真源（active: true）。
+      // 按当前 booking 用户定位：映射行含 bookingUserId（schema.prisma StaticOperatorMapping・@@index([bookingUserId])），
+      // 存在 active 映射即 mappingActive=true（per-user 判定）。
+      const activeMapping = await this.prisma.staticOperatorMapping.findFirst({
+        where: { bookingUserId: userId, active: true },
+        select: { id: true },
+      });
+
+      return this.mapToResponseDto(user, !!activeMapping);
     } catch (error) {
       this.logger.error(`获取用户信息失败: ${error.message}`, error.stack);
       if (error instanceof ResourceNotFoundException) {
@@ -567,9 +576,10 @@ export class AuthService {
   /**
    * 将预约实体转换为响应DTO
    * @param user 用户实体
+   * @param mappingActive 是否启用 Salesforce 静态操作员映射（P0-4）
    * @returns 用户响应DTO
    */
-  private mapToResponseDto(user: any): UserInfoResponseDto {
+  private mapToResponseDto(user: any, mappingActive: boolean): UserInfoResponseDto {
     return {
       id: user.id,
       name: user.name,
@@ -577,6 +587,7 @@ export class AuthService {
       email: user.email,
       role: user.userType,
       status: user.status,
+      mappingActive,
       remarks: user.remarks,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

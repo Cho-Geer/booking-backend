@@ -9,6 +9,7 @@ describe('AuthController', () => {
   let controller: AuthController;
   const mockAuthService = {
     logout: jest.fn().mockResolvedValue(undefined),
+    getUserProfile: jest.fn(),
   };
   const mockConfigService = {
     get: jest.fn(),
@@ -64,5 +65,24 @@ describe('AuthController', () => {
       secure: false,
       sameSite: 'lax',
     });
+  });
+
+  it('getProfile 应透传当前用户 ID 并返回含 mappingActive 的用户信息', async () => {
+    const profileUser = {
+      id: 'user-1',
+      name: '测试用户',
+      phoneNumber: '138****8000',
+      email: 'test@example.com',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      mappingActive: true,
+    };
+    mockAuthService.getUserProfile.mockResolvedValue(profileUser);
+
+    const result = await controller.getProfile({ id: 'user-1' });
+
+    expect(mockAuthService.getUserProfile).toHaveBeenCalledWith('user-1');
+    expect(result.data).toEqual(profileUser);
+    expect(result.data.mappingActive).toBe(true);
   });
 });

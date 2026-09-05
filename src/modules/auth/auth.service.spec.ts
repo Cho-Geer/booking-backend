@@ -26,6 +26,9 @@ const mockPrismaService = {
   user: {
     findUnique: jest.fn(),
   },
+  staticOperatorMapping: {
+    findFirst: jest.fn(),
+  },
 };
 
 const mockJwtService = {
@@ -266,21 +269,49 @@ describe('AuthService', () => {
   });
 
   describe('getUserProfile', () => {
-    it('应该成功获取用户信息', async () => {
-      const mockUser = {
-        id: 'user-id',
-        name: '测试用户',
-        email: 'test@example.com',
-        phone: '138****8000',
-        userType: UserType.CUSTOMER,
-        status: UserStatus.ACTIVE,
-      };
+    const mockUser = {
+      id: 'user-id',
+      name: '测试用户',
+      email: 'test@example.com',
+      phone: '138****8000',
+      userType: UserType.CUSTOMER,
+      status: UserStatus.ACTIVE,
+    };
 
+    it('应该成功获取用户信息', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.staticOperatorMapping.findFirst.mockResolvedValue(null);
 
       const result = await service.getUserProfile('user-id');
 
       expect(result.id).toBe('user-id');
+      expect(result.mappingActive).toBe(false);
+    });
+
+    it('存在 active 映射时 mappingActive 为 true（per-user 定位）', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.staticOperatorMapping.findFirst.mockResolvedValue({ id: 'mapping-id' });
+
+      const result = await service.getUserProfile('user-id');
+
+      expect(result.mappingActive).toBe(true);
+      expect(mockPrismaService.staticOperatorMapping.findFirst).toHaveBeenCalledWith({
+        where: { bookingUserId: 'user-id', active: true },
+        select: { id: true },
+      });
+    });
+
+    it('无映射时 mappingActive 为 false', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.staticOperatorMapping.findFirst.mockResolvedValue(null);
+
+      const result = await service.getUserProfile('user-id');
+
+      expect(result.mappingActive).toBe(false);
+      expect(mockPrismaService.staticOperatorMapping.findFirst).toHaveBeenCalledWith({
+        where: { bookingUserId: 'user-id', active: true },
+        select: { id: true },
+      });
     });
 
     it('应该抛出用户不存在异常', async () => {

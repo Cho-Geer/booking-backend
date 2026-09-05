@@ -132,6 +132,9 @@ export class UserInfoResponseDto {
   @ApiProperty({ description: '用户状态' })
   status: string;
 
+  @ApiProperty({ description: '是否启用 Salesforce 静态操作员映射（P0-4・RULE-12）' })
+  mappingActive: boolean;
+
   @ApiProperty({ description: '备注' })
   remarks?: string;
 
