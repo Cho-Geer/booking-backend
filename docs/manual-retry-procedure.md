@@ -159,7 +159,7 @@ System.enqueueJob(new BookingCommandQueueable(
 - **eventId は永続化しない**（`updateSyncStatus` は `syncStatus` のみ書き込む: `projection-sender.service.ts:377-392`）。
 - したがって、checklist B-7 / REQ-028 の「投影を原 eventId で再実行」は**現実装では到達不能**。
 
-> **拍板（2026-09-04）**: 上記を「既知偏差」として文書化・記録する。P1 としての eventId 永続化は候補として別枠管理（本手順書の対象外）。
+> **決定（2026-09-04）**: 上記を「既知偏差」として文書化・記録する。P1 としての eventId 永続化は候補として別枠管理（本手順書の対象外）。
 
 ### 4.2 リカバリ手順（代替手順）
 
@@ -187,7 +187,7 @@ System.enqueueJob(new BookingCommandQueueable(
   - Booking 側: env `INTEGRATION_TOKEN` の 1 値。`IntegrationGuard` は単一値との定数時間比較（`integration.guard.ts:40-50`）。
   - SF 側: EC `guardSecret` の 1 値。
 - **C-2修订の「2 値重複ローテーション」は現実装では成立しない**。切替時（旧値→新値の間）に**401 ウィンドウ（切替不一致期間）は不可避**。
-- **拍板（2026-09-04）**: 実態記載 + 矛盾の記録で対応する。真の重複（Guard 双値対応）はコード変更であり**未実施**。C-2修订との矛盾として CHK-02 D 系回写時に記録予定。
+- **決定（2026-09-04）**: 実態記載 + 矛盾の記録で対応する。真の重複（Guard 双値対応）はコード変更であり**未実施**。C-2修订との矛盾として CHK-02 D 系回写時に記録予定。
 
 ### 5.2 手順（推奨順序）
 
@@ -285,7 +285,7 @@ SET booking_user_id = EXCLUDED.booking_user_id,
 
 本番相当での実施前に、以下を確認・実施すること。
 
-- [x] SF NC URL を実 URL 化する（現 placeholder: `https://booking.example.com`） **【実施 2026-09-05・拍板 β 偏差注記】**＝一次性 cloudflared 隧道 URL（Setup UI で NC `Booking_Integration_API` に当日 URL を設定。NC metadata は Url 値を含まないため版庫漂移なし・公網化＝P0-5 繰越）
+- [x] SF NC URL を実 URL 化する（現 placeholder: `https://booking.example.com`） **【実施 2026-09-05・決定 β 偏差注記】**＝使い捨ての cloudflared トンネル URL（Setup UI で NC `Booking_Integration_API` に当日 URL を設定。NC metadata は Url 値を含まないためリポジトリ乖離なし・公開化＝P0-5 繰越）
 - [x] EC `guardSecret` と Booking 側 `INTEGRATION_TOKEN` を同値化する **【実施・実証済 2026-09-05】**＝MV-08 で IntegrationGuard 通過（401 なし）により同値性を実機実証
 - [x] `SF_PROJECTION_ENABLED=true` に設定する **【実施済 2026-09-05】**（`.env.development`）
 - [x] B-5 マッピング（StaticOperatorMapping）登録済であること **【登録済 2026-09-04・6.2 参照】**
@@ -300,7 +300,7 @@ SET booking_user_id = EXCLUDED.booking_user_id,
 
 ### 7.2.1 実施記録（2026-09-05）
 
-**FAILED 誘発**（隧道中断→HTTP 530×3）:
+**FAILED 誘発**（トンネル中断→HTTP 530×3）:
 
 - 対象コマンド: `CMD-00002`（commandId `7c9e6679-…`）
 - 結果: HTTP 530 ×3 → **FAILED / SYSTEM_ERROR / AttemptCount=3**（`72-failed-induction.json`・chogeer `.tmp-p04-evidence/`）
@@ -320,4 +320,4 @@ SET booking_user_id = EXCLUDED.booking_user_id,
 **86② 観察（既知乖離・CHK-02:86②）**:
 
 - 取消コマンド本体・正本・コマンド記録は**全成功**につき、Booking 側再投影（`projectBooking`）の `appointments.syncStatus=ERROR` のみ観測（SF 行 owner=admin に integration user 不可視で再投影 update 不可・SF 側新行なし）。
-- **ユーザー拍板（2026-09-05）＝C 方案「デモ予約 ID 分離＋記録方式」**：乖離データは修復せず既知偏差として文書化・demo 用予約 ID を分離管理（CHK-02 S-3 登記②に処置記録済・CHK-03 §6 参照）。
+- **ユーザー決定（2026-09-05）＝C 案「デモ予約 ID 分離＋記録方式」**：乖離データは修復せず既知偏差として文書化・demo 用予約 ID を分離管理（CHK-02 S-3 登記②に処置記録済・CHK-03 §6 参照）。
