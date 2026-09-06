@@ -226,7 +226,7 @@ SET booking_user_id = EXCLUDED.booking_user_id,
 
 | 項目 | 値 |
 | --- | --- |
-| salesforceUserId | `005g500000C8LhuAAF`（18 桁） |
+| salesforceUserId | `005XXXXXXXXXXXXXXX`（18 桁） |
 | bookingUserId | `5d8f812f-3bc9-4a72-bd5a-bc146fdc87da`（システム管理者） |
 | active | `true` |
 | 登録日 | 2026-09-04 |
@@ -261,7 +261,7 @@ SET booking_user_id = EXCLUDED.booking_user_id,
   - `commandType=CANCEL_BOOKING`
   - `commandId=f9006b49-4834-428a-bae6-713aa2d66cd9`
   - `bookingExternalId=395f31cb-38ca-46aa-adf2-1a1ecabd2ece`
-  - `requestedBySalesforceUserId=005g500000C8LhuAAF`
+  - `requestedBySalesforceUserId=005XXXXXXXXXXXXXXX`
   - `correlationId=7a291e46-ed66-4144-a2b7-1b4a0ff0aa38`
   - `expectedVersion=0`
 
