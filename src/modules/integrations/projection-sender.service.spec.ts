@@ -25,6 +25,7 @@ import { generateKeyPairSync, randomUUID } from 'crypto';
 jest.mock('fs/promises', () => {
   if (!(globalThis as any).__projectionSpecFsReadFile) {
     // 工厂执行早于 import 绑定，此处用 require（CJS 全局）取 crypto；2048 位仅生成一次并缓存于 globalThis
+    // eslint-disable-next-line @typescript-eslint/no-var-requires -- jest.mock 工厂内禁止引用外层 import 绑定，require 为有意用法
     const { generateKeyPairSync: genRsaKeyPair } = require('crypto') as typeof import('crypto');
     const privateKeyPem = genRsaKeyPair('rsa', { modulusLength: 2048 })
       .privateKey.export({ type: 'pkcs8', format: 'pem' })
