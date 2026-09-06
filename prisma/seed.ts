@@ -1,5 +1,6 @@
 /**
- * Prisma 种子脚本 - 创建初始管理员用户
+ * Prisma 种子脚本 - 初始化基础数据（管理员用户、默认时间段、默认服务）
+ *                  及可选的静态操作员映射（SEED_STATIC_OPERATOR_MAPPING=true 时）
  * 
  * 使用方法：
  * 
@@ -142,6 +143,8 @@ async function main() {
   ];
 
   // 逐个创建管理员用户
+  // 第 1 个管理员（系统管理员）的 ID 需捕获，供第四部分静态操作员映射使用
+  let firstAdminId: string | null = null;
   for (const adminUser of adminUsers) {
     try {
       // 验证手机号格式
@@ -182,6 +185,11 @@ async function main() {
       console.log(`   - 邮箱：${createdUser.email}`);
       console.log(`   - 类型：${createdUser.userType}`);
       console.log(`   - 状态：${createdUser.status}\n`);
+
+      // 捕获第一管理员（系统管理员）ID
+      if (firstAdminId === null) {
+        firstAdminId = createdUser.id;
+      }
     } catch (error) {
       console.error(`❌ 创建管理员失败 (${adminUser.name}):`, error);
     }
@@ -291,6 +299,57 @@ async function main() {
     console.log(`✅ 已创建 ${defaultServices.length} 个默认服务`);
   } else {
     console.log(`ℹ️  数据库中已有 ${existingServices} 个服务，跳过初始化`);
+  }
+
+  // ============================================
+  // 第四部分：静态操作员映射（可选，默认关闭）
+  // ============================================
+  // 仅当 SEED_STATIC_OPERATOR_MAPPING=true 时执行：
+  // 为第一管理员（系统管理员）写入 Salesforce 静态操作员映射，
+  // 用于联调管理页的 SF 工作台入口。默认跳过，种子行为零变化。
+  // 注意：SF ID 必须来自真实环境变量，禁止插入占位映射
+  //（占位映射会误点亮管理页 SF 工作台按钮）。
+  const seedStaticOperatorMapping =
+    process.env.SEED_STATIC_OPERATOR_MAPPING === 'true';
+  const sfUserId = process.env.SEED_SF_USER_ID;
+
+  if (!seedStaticOperatorMapping) {
+    console.log('⏭️ 第四部分：静态操作员映射（未设置 SEED_STATIC_OPERATOR_MAPPING=true，跳过）');
+  } else if (!sfUserId) {
+    console.warn('⚠️ 第四部分：静态操作员映射（已开启开关但未设置 SEED_SF_USER_ID，跳过——禁止插入占位映射）');
+  } else if (firstAdminId === null) {
+    console.warn('⚠️ 第四部分：静态操作员映射（未获取到第一管理员 ID，跳过）');
+  } else {
+    console.log('\n📋 第四部分：静态操作员映射');
+    console.log('='.repeat(50));
+
+    // 先清理该 booking 用户名下的既有映射，保证一个 booking 用户至多一行，
+    // 规避 auth.service.ts 中 findFirst({ active: true }) 的多行歧义
+    const deleted = await prisma.staticOperatorMapping.deleteMany({
+      where: { bookingUserId: firstAdminId },
+    });
+    if (deleted.count > 0) {
+      console.log(`🧹 已清理该管理员名下 ${deleted.count} 条旧映射`);
+    }
+
+    // 幂等 upsert：以 salesforceUserId（唯一键）为定位
+    await prisma.staticOperatorMapping.upsert({
+      where: { salesforceUserId: sfUserId },
+      update: {
+        bookingUserId: firstAdminId,
+        active: true,
+      },
+      create: {
+        salesforceUserId: sfUserId,
+        bookingUserId: firstAdminId,
+        active: true,
+      },
+    });
+
+    console.log(`✅ 静态操作员映射写入成功：`);
+    console.log(`   - SF User ID: ${sfUserId}`);
+    console.log(`   - Booking 管理员 ID: ${firstAdminId}`);
+    console.log(`   - 状态：ACTIVE`);
   }
 
   // ============================================
