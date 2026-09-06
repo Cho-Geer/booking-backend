@@ -7,7 +7,10 @@
 # 文档管理策略：默认忽略docs目录，明确列出需要版本管理的文档
 /docs/*
 # 核心项目文档（必须纳入版本管理）
-!/docs/api-contract.md          # API契约，前后端集成基础
+# API契约（行尾注释会使白名单失效，注释必须独立成行）
+!/docs/api-contract.md
+# API契约日译版（作品集用）
+!/docs/api-contract.ja.md
 # 手动重试手顺书（B-7）运维参考用
 !/docs/manual-retry-procedure.md
 # 文档导航 / Redis / シナリオ深掘り / 時序図（ルート README.md 参照）
