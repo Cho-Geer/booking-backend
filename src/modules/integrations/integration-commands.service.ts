@@ -8,7 +8,7 @@
  * @since 2024
  */
 
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingCommandRequestDto } from './dto/booking-command-request.dto';
 import { BookingCommandResult } from './dto/booking-command-result.dto';
@@ -19,6 +19,7 @@ import {
   BusinessRuleException,
 } from '../../common/exceptions/business.exceptions';
 import { ProjectionSenderService } from './projection-sender.service';
+import { EmailService } from '../email/email.service';
 
 /**
  * 集成命令服务类
@@ -26,9 +27,12 @@ import { ProjectionSenderService } from './projection-sender.service';
  */
 @Injectable()
 export class IntegrationCommandsService {
+  private readonly logger = new Logger(IntegrationCommandsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectionSenderService: ProjectionSenderService,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -113,7 +117,8 @@ export class IntegrationCommandsService {
     }
 
     // 6. 同一事务（RULE-08）：正本更新 + 命令行写入（命令行只存 200・schema 注释明文）
-    const canonicalVersion = await this.prisma.$transaction(async (tx) => {
+    // updated（含 include 关联）一并带出 tx 作用域，供事务后的キャンセル通知メール使用
+    const { canonicalVersion, updated } = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.appointment.update({
         where: { id: dto.bookingExternalId },
         data: {
@@ -122,6 +127,7 @@ export class IntegrationCommandsService {
           syncStatus: 'PENDING',
           cancelledAt: new Date(),
         },
+        include: { timeSlot: true, service: true },
       });
 
       await tx.integrationCommand.create({
@@ -136,7 +142,7 @@ export class IntegrationCommandsService {
         },
       });
 
-      return updated.version;
+      return { canonicalVersion: updated.version, updated };
     });
 
     // B-4 投影送信（RULE-08・IF-01）：命令取消事务 resolve 后同步呼出（tx 内已含 version 递增 + syncStatus=PENDING，
@@ -146,6 +152,20 @@ export class IntegrationCommandsService {
       await this.projectionSenderService.projectBooking(dto.bookingExternalId);
     } catch {
       // 投影失敗不影响正本応答（同期呼出・C-4）
+    }
+
+    // キャンセル通知メール（UI 経路 bookings.service.ts cancelBooking と同一形状・同一順序：投影→メール）。
+    // customerEmail が存在する場合のみ fire-and-forget 送信（.catch ログのみ）で、
+    // メール失敗が 200 応答に影響しない（C-4）。べき等リプレイと門失敗経路はここに到達しない。
+    if (updated.customerEmail) {
+      this.emailService.sendBookingCancellation(updated.customerEmail, {
+        customerName: updated.customerName,
+        appointmentDate: updated.appointmentDate.toLocaleDateString(),
+        timeSlot: updated.timeSlot ? updated.timeSlot.slotTime.toString() : '',
+        serviceName: updated.service ? updated.service.name : 'Standard Service',
+        appointmentNumber: updated.appointmentNumber,
+        notes: updated.notes,
+      }).catch(err => this.logger.error('Error triggering email cancellation', err));
     }
 
     // 7. 返回受理结果

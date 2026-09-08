@@ -46,6 +46,11 @@ describe('IntegrationCommandsService', () => {
     projectBooking: jest.fn(),
   };
 
+  // Mock EmailService（キャンセル通知メール）：Service は .catch で後続するため resolved promise を返す
+  const mockEmailService = {
+    sendBookingCancellation: jest.fn().mockResolvedValue(undefined),
+  };
+
   let service: IntegrationCommandsService;
 
   // 公共测试数据
@@ -60,6 +65,19 @@ describe('IntegrationCommandsService', () => {
     id: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
     version: 1,
     status: 'PENDING',
+  };
+  // キャンセル通知メール用のコンテキストを含む update 返り値（include: timeSlot/service 相当）
+  const CANCELLED_APPOINTMENT_BASE = {
+    ...PENDING_APPOINTMENT,
+    status: 'CANCELLED',
+    version: 2,
+    customerName: '山田太郎',
+    customerEmail: 'customer@example.com',
+    appointmentDate: new Date('2026-09-10T00:00:00.000Z'),
+    appointmentNumber: 'AP-20260910-0001',
+    notes: '備考',
+    timeSlot: { slotTime: '10:00:00' },
+    service: { name: '撮影プラン' },
   };
 
   // 构造合法 DTO
@@ -82,9 +100,7 @@ describe('IntegrationCommandsService', () => {
     mockPrismaService.user.findUnique.mockResolvedValue(ADMIN_USER);
     mockPrismaService.appointment.findUnique.mockResolvedValue(PENDING_APPOINTMENT);
     mockPrismaService.appointment.update.mockResolvedValue({
-      ...PENDING_APPOINTMENT,
-      status: 'CANCELLED',
-      version: 2,
+      ...CANCELLED_APPOINTMENT_BASE,
       cancelledAt: new Date(),
     });
     mockPrismaService.integrationCommand.create.mockResolvedValue({ id: 'cmd-row-1' });
@@ -93,10 +109,13 @@ describe('IntegrationCommandsService', () => {
       acceptedVersion: 2,
       syncStatus: 'SYNCED',
     });
+    // restoreMocks:true（jest.config.js）により各テストで実装が復元されるため再シード
+    mockEmailService.sendBookingCancellation.mockResolvedValue(undefined);
 
     service = new IntegrationCommandsService(
       mockPrismaService as any,
       mockProjectionSenderService as any,
+      mockEmailService as any,
     );
   });
 
@@ -291,6 +310,7 @@ describe('IntegrationCommandsService', () => {
           syncStatus: 'PENDING',
           cancelledAt: expect.any(Date),
         },
+        include: { timeSlot: true, service: true },
       });
 
       // create 在同一 tx（tx === mockPrismaService）内被调用
@@ -361,6 +381,124 @@ describe('IntegrationCommandsService', () => {
       await service.executeCancelCommand(buildDto());
 
       expect(mockProjectionSenderService.projectBooking).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('キャンセル通知メール（EmailService・UI 経路と同一形状・同一順序）', () => {
+    it('成功時 customerEmail 宛に sendBookingCancellation が 1 回呼ばれ、全コンテキストフィールドが渡る', async () => {
+      await service.executeCancelCommand(buildDto());
+
+      expect(mockEmailService.sendBookingCancellation).toHaveBeenCalledTimes(1);
+      // toLocaleDateString() は TZ 依存のためテスト側も同様に算出して比較（TZ 非依存）
+      expect(mockEmailService.sendBookingCancellation).toHaveBeenCalledWith(
+        'customer@example.com',
+        {
+          customerName: '山田太郎',
+          appointmentDate: new Date('2026-09-10T00:00:00.000Z').toLocaleDateString(),
+          timeSlot: '10:00:00',
+          serviceName: '撮影プラン',
+          appointmentNumber: 'AP-20260910-0001',
+          notes: '備考',
+        },
+      );
+    });
+
+    it('customerEmail が null の場合は送信しない（受理結果は従来どおり 200 SUCCESS）', async () => {
+      // 共有デフォルトを破壊しないよう mockResolvedValueOnce で上書き
+      mockPrismaService.appointment.update.mockResolvedValueOnce({
+        ...CANCELLED_APPOINTMENT_BASE,
+        cancelledAt: new Date(),
+        customerEmail: null,
+      });
+
+      const result = await service.executeCancelCommand(buildDto());
+
+      expect(result).toEqual({
+        httpStatus: 200,
+        canonicalVersion: 2,
+        resultCode: 'SUCCESS',
+      });
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('べき等リプレイ（commandId 命中）では送信しない（副作用ゼロ・RULE-03）', async () => {
+      mockPrismaService.integrationCommand.findUnique.mockResolvedValue({
+        id: 'row-1',
+        commandId: 'cmd-001',
+        httpStatus: 200,
+        resultCode: 'SUCCESS',
+        canonicalVersion: 3,
+      });
+
+      await service.executeCancelCommand(buildDto());
+
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('静的映射 NG（403）では送信しない（AuthorizationException）', async () => {
+      mockPrismaService.staticOperatorMapping.findFirst.mockResolvedValue(null);
+
+      const error = await service.executeCancelCommand(buildDto()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(AuthorizationException);
+      expect(error.getStatus()).toBe(403);
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('预约が存在しない（404）では送信しない（ResourceNotFoundException）', async () => {
+      mockPrismaService.appointment.findUnique.mockResolvedValue(null);
+
+      const error = await service.executeCancelCommand(buildDto()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ResourceNotFoundException);
+      expect(error.getStatus()).toBe(404);
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('状态が COMPLETED（409）では送信しない（BusinessRuleException）', async () => {
+      mockPrismaService.appointment.findUnique.mockResolvedValue({
+        ...PENDING_APPOINTMENT,
+        status: 'COMPLETED',
+      });
+
+      const error = await service.executeCancelCommand(buildDto()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(BusinessRuleException);
+      expect(error.getStatus()).toBe(409);
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('版本不一致（409）では送信しない（ResourceConflictException）', async () => {
+      const error = await service.executeCancelCommand(buildDto({ expectedVersion: 0 })).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ResourceConflictException);
+      expect(error.getStatus()).toBe(409);
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('sendBookingCancellation が reject しても 200 SUCCESS・tx 書き込みは不変（防御経路のみ：本番実装は内部 try/catch で reject しない）', async () => {
+      mockEmailService.sendBookingCancellation.mockRejectedValueOnce(new Error('メール送信失敗'));
+
+      const result = await service.executeCancelCommand(buildDto());
+
+      expect(result).toEqual({
+        httpStatus: 200,
+        canonicalVersion: 2,
+        resultCode: 'SUCCESS',
+      });
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.integrationCommand.create).toHaveBeenCalledTimes(1);
+      expect(mockEmailService.sendBookingCancellation).toHaveBeenCalledTimes(1);
+    });
+
+    it('呼び出し順序：projectBooking の後に sendBookingCancellation（UI 経路と同一順序）', async () => {
+      await service.executeCancelCommand(buildDto());
+
+      const txOrder = mockPrismaService.$transaction.mock.invocationCallOrder[0];
+      const projectionOrder = mockProjectionSenderService.projectBooking.mock.invocationCallOrder[0];
+      const emailOrder = mockEmailService.sendBookingCancellation.mock.invocationCallOrder[0];
+      expect(projectionOrder).toBeGreaterThan(txOrder);
+      expect(emailOrder).toBeGreaterThan(projectionOrder);
     });
   });
 
