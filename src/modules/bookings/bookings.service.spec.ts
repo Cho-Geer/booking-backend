@@ -468,6 +468,174 @@ describe('BookingsService', () => {
       expect(mockProjectionSenderService.projectBooking).toHaveBeenCalledTimes(1);
     });
 
+    it('更新为 CANCELLED（从非取消状态转换）: 发送取消邮件且 update data 含 cancelledAt，不发送更新邮件', async () => {
+      const existingBooking = {
+        id: 'booking-123',
+        status: AppointmentStatus.PENDING,
+      };
+
+      const updatedBooking = {
+        id: 'booking-123',
+        appointmentNumber: 'AP-20240115-0001',
+        timeSlotId: 'timeslot-123',
+        userId: 'user-123',
+        status: AppointmentStatus.CANCELLED,
+        cancelledAt: new Date(),
+        appointmentDate: new Date('2024-01-15'),
+        customerName: '张三',
+        customerPhone: '13800138000',
+        customerEmail: 'test@example.com',
+        notes: '测试预约',
+        confirmationSent: false,
+        reminderSent: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: { name: '张三', phoneNumber: '13800138000' },
+        timeSlot: { slotTime: '09:00:00', durationMinutes: 30 },
+        service: null,
+      };
+
+      mockPrismaService.appointment.findUnique.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.update.mockResolvedValue(updatedBooking);
+
+      const cancelDto: UpdateAppointmentDto = { status: AppointmentStatusEnum.CANCELLED };
+      const result = await service.updateBooking('booking-123', cancelDto);
+
+      expect(result.status).toBe(AppointmentStatus.CANCELLED);
+      // 取消转换：update data 注入 cancelledAt + status=CANCELLED（与 cancelBooking 一致）
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'booking-123' },
+          data: expect.objectContaining({
+            status: AppointmentStatus.CANCELLED,
+            cancelledAt: expect.any(Date),
+            version: { increment: 1 },
+            syncStatus: 'PENDING',
+          }),
+        }),
+      );
+      // 发送取消邮件（一次，收件人 + 上下文与 cancelBooking 形状一致），不发送更新邮件
+      expect(mockEmailService.sendBookingCancellation).toHaveBeenCalledTimes(1);
+      expect(mockEmailService.sendBookingCancellation).toHaveBeenCalledWith(
+        'test@example.com',
+        expect.objectContaining({
+          customerName: '张三',
+          appointmentDate: updatedBooking.appointmentDate.toLocaleDateString(),
+          timeSlot: '09:00:00',
+          serviceName: 'Standard Service',
+          appointmentNumber: 'AP-20240115-0001',
+          notes: '测试预约',
+        }),
+      );
+      expect(mockEmailService.sendBookingUpdate).not.toHaveBeenCalled();
+    });
+
+    it('已是 CANCELLED 再更新为 CANCELLED（无转换）: 仍发送更新邮件，不发送取消邮件，不注入 cancelledAt', async () => {
+      const existingBooking = {
+        id: 'booking-123',
+        status: AppointmentStatus.CANCELLED,
+      };
+
+      const updatedBooking = {
+        id: 'booking-123',
+        appointmentNumber: 'AP-20240115-0001',
+        timeSlotId: 'timeslot-123',
+        userId: 'user-123',
+        status: AppointmentStatus.CANCELLED,
+        appointmentDate: new Date('2024-01-15'),
+        customerName: '张三',
+        customerPhone: '13800138000',
+        customerEmail: 'test@example.com',
+        notes: '测试预约',
+        confirmationSent: false,
+        reminderSent: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: { name: '张三', phoneNumber: '13800138000' },
+        timeSlot: { slotTime: '09:00:00', durationMinutes: 30 },
+        service: null,
+      };
+
+      mockPrismaService.appointment.findUnique.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.update.mockResolvedValue(updatedBooking);
+
+      const cancelDto: UpdateAppointmentDto = { status: AppointmentStatusEnum.CANCELLED };
+      const result = await service.updateBooking('booking-123', cancelDto);
+
+      expect(result.status).toBe(AppointmentStatus.CANCELLED);
+      // 无转换：update data 不含 cancelledAt（仅 status 变更）
+      expect(mockPrismaService.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'booking-123' },
+          data: expect.not.objectContaining({
+            cancelledAt: expect.anything(),
+          }),
+        }),
+      );
+      // 既有行为保留：仍发送更新邮件，不发送取消邮件
+      expect(mockEmailService.sendBookingUpdate).toHaveBeenCalledTimes(1);
+      expect(mockEmailService.sendBookingUpdate).toHaveBeenCalledWith(
+        'test@example.com',
+        expect.objectContaining({
+          customerName: '张三',
+          appointmentDate: updatedBooking.appointmentDate.toLocaleDateString(),
+          timeSlot: '09:00:00',
+          serviceName: 'Standard Service',
+          appointmentNumber: 'AP-20240115-0001',
+          notes: '测试预约',
+        }),
+      );
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
+    it('非取消更新（状态转为 CONFIRMED）: 仍发送更新邮件，不发送取消邮件', async () => {
+      const existingBooking = {
+        id: 'booking-123',
+        status: AppointmentStatus.PENDING,
+      };
+
+      const updatedBooking = {
+        id: 'booking-123',
+        appointmentNumber: 'AP-20240115-0001',
+        timeSlotId: 'timeslot-123',
+        userId: 'user-123',
+        status: AppointmentStatus.CONFIRMED,
+        appointmentDate: new Date('2024-01-15'),
+        customerName: '李四',
+        customerPhone: '13800138000',
+        customerEmail: 'test@example.com',
+        notes: '更新的备注',
+        confirmationSent: false,
+        reminderSent: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: { name: '李四', phoneNumber: '13800138000' },
+        timeSlot: { slotTime: '09:00:00', durationMinutes: 30 },
+        service: null,
+      };
+
+      mockPrismaService.appointment.findUnique.mockResolvedValue(existingBooking);
+      mockPrismaService.appointment.update.mockResolvedValue(updatedBooking);
+
+      const result = await service.updateBooking('booking-123', updateDto);
+
+      expect(result.status).toBe(AppointmentStatus.CONFIRMED);
+      // 非取消更新：仍发送更新邮件（一次，收件人 + 上下文正确），不发送取消邮件
+      expect(mockEmailService.sendBookingUpdate).toHaveBeenCalledTimes(1);
+      expect(mockEmailService.sendBookingUpdate).toHaveBeenCalledWith(
+        'test@example.com',
+        expect.objectContaining({
+          customerName: '李四',
+          appointmentDate: updatedBooking.appointmentDate.toLocaleDateString(),
+          timeSlot: '09:00:00',
+          serviceName: 'Standard Service',
+          appointmentNumber: 'AP-20240115-0001',
+          notes: '更新的备注',
+        }),
+      );
+      expect(mockEmailService.sendBookingCancellation).not.toHaveBeenCalled();
+    });
+
     it('应该抛出预约不存在的异常', async () => {
       mockPrismaService.appointment.findUnique.mockResolvedValue(null);
 

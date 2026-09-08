@@ -206,6 +206,12 @@ export class BookingsService {
       
       // 构建更新数据，只更新提供的字段
       const updateData: any = {};
+
+      // 取消状态转换检测：从非取消状态更新为 CANCELLED 时，视为取消操作
+      // （与 cancelBooking 保持一致：记录 cancelledAt 并发送取消邮件）
+      const isTransitionToCancelled =
+        updateAppointmentDto.status === AppointmentStatusEnum.CANCELLED &&
+        existingAppointment.status !== AppointmentStatus.CANCELLED;
       
       // 如果更新了timeSlotId，进行验证
       if (updateAppointmentDto.timeSlotId !== undefined) {
@@ -234,6 +240,10 @@ export class BookingsService {
       if (updateAppointmentDto.status !== undefined) {
         // 确保状态值是有效的枚举值
         updateData.status = updateAppointmentDto.status;
+        // 取消转换：记录取消时间，与 cancelBooking 保持一致
+        if (isTransitionToCancelled) {
+          updateData.cancelledAt = new Date();
+        }
         this.logger.log(`设置状态: ${updateAppointmentDto.status}`);
       }
       if (updateAppointmentDto.appointmentDate !== undefined) {
@@ -348,16 +358,27 @@ export class BookingsService {
         // 投影失敗不影响正本応答（同期呼出・C-4）
       }
 
-      // Send update email asynchronously
+      // Send email asynchronously: cancellation email on transition to CANCELLED, otherwise update email
       if (appointment.customerEmail) {
-        this.emailService.sendBookingUpdate(appointment.customerEmail, {
-          customerName: appointment.customerName,
-          appointmentDate: appointment.appointmentDate.toLocaleDateString(),
-          timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
-          serviceName: appointment.service ? appointment.service.name : 'Standard Service',
-          appointmentNumber: appointment.appointmentNumber,
-          notes: appointment.notes
-        }).catch(err => this.logger.error('Error triggering email update', err));
+        if (isTransitionToCancelled) {
+          this.emailService.sendBookingCancellation(appointment.customerEmail, {
+            customerName: appointment.customerName,
+            appointmentDate: appointment.appointmentDate.toLocaleDateString(),
+            timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
+            serviceName: appointment.service ? appointment.service.name : 'Standard Service',
+            appointmentNumber: appointment.appointmentNumber,
+            notes: appointment.notes
+          }).catch(err => this.logger.error('Error triggering email cancellation', err));
+        } else {
+          this.emailService.sendBookingUpdate(appointment.customerEmail, {
+            customerName: appointment.customerName,
+            appointmentDate: appointment.appointmentDate.toLocaleDateString(),
+            timeSlot: appointment.timeSlot ? appointment.timeSlot.slotTime.toString() : '',
+            serviceName: appointment.service ? appointment.service.name : 'Standard Service',
+            appointmentNumber: appointment.appointmentNumber,
+            notes: appointment.notes
+          }).catch(err => this.logger.error('Error triggering email update', err));
+        }
       }
 
       return this.mapToResponseDto(appointment, requestingUserId);
