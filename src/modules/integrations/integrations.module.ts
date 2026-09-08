@@ -11,12 +11,15 @@ import { IntegrationCommandsService } from './integration-commands.service';
 import { IntegrationCommandsController } from './integration-commands.controller';
 import { ProjectionSenderService } from './projection-sender.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     PrismaModule,
     // B-4 投影送信（IF-01）：HttpService 来源；JwtService 由 app.module JwtModule global:true 提供，无需重复注册
     HttpModule,
+    // キャンセル通知メール（EmailService）
+    EmailModule,
   ],
   controllers: [IntegrationCommandsController],
   providers: [IntegrationCommandsService, ProjectionSenderService],
