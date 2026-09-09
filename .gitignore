@@ -18,6 +18,8 @@
 !/docs/scenario-deep-dive.md
 !/docs/sequence-diagrams/
 !/docs/sequence-diagrams/*
+# README 画面截图存放目录（docs/images/）
+!/docs/images/
 # 内部文档（不应提交）
 /docs/private/                  # 内部决策、计划和临时文档
 /logs/*

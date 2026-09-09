@@ -4,6 +4,24 @@
 
 - **Purpose**: Shows the role of every document under `docs/` and the recommended reading order on a single page.
 
+## Screen Gallery
+
+### Email notification templates
+
+Rendered examples of the HTML emails sent when a booking is confirmed, updated, or cancelled.
+
+**Booking Confirmed**
+
+![Rendered example of the booking confirmation email](docs/images/email-template-confirmation.png)
+
+**Booking Updated**
+
+![Rendered example of the booking updated email](docs/images/email-template-updated.png)
+
+**Booking Cancelled**
+
+![Rendered example of the booking cancellation email](docs/images/email-template-cancellation.png)
+
 ## Recommended reading order
 
 | # | Document | Description |

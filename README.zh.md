@@ -4,6 +4,24 @@
 
 - **目的**: 在一页内说明 `docs/` 下各文档的定位与推荐阅读顺序。
 
+## 画面画廊
+
+### 邮件通知模板
+
+预约确认、更新、取消时发送的 HTML 邮件的渲染示例。
+
+**预约确认（Booking Confirmed）**
+
+![预约确认邮件的渲染示例](docs/images/email-template-confirmation.png)
+
+**预约更新（Booking Updated）**
+
+![预约更新邮件的渲染示例](docs/images/email-template-updated.png)
+
+**预约取消（Booking Cancelled）**
+
+![预约取消邮件的渲染示例](docs/images/email-template-cancellation.png)
+
 ## 推荐阅读顺序
 
 | 顺序 | 文档 | 一句话说明 |
