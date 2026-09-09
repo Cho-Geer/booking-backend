@@ -4,6 +4,24 @@
 
 - **目的**: `docs/` 配下のドキュメントの役割と読書動線を一枚で示す。
 
+## 画面ギャラリー
+
+### メール通知テンプレート
+
+予約の確定・更新・キャンセル時に送信される HTML メールのレンダリング例です。
+
+**予約確定（Booking Confirmed）**
+
+![予約確定メールのレンダリング例](docs/images/email-template-confirmation.png)
+
+**予約更新（Booking Updated）**
+
+![予約更新メールのレンダリング例](docs/images/email-template-updated.png)
+
+**予約キャンセル（Booking Cancelled）**
+
+![予約キャンセルメールのレンダリング例](docs/images/email-template-cancellation.png)
+
 ## 推奨読書動線
 
 | 順 | ドキュメント | 一言説明 |
