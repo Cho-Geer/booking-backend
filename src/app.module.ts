@@ -4,7 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
-import { redisStore } from 'cache-manager-redis-store';
+import { createKeyv } from '@keyv/redis';
 import { resolveJwtExpiresIn } from './common/utils/jwt-expires.util';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
@@ -41,16 +41,20 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
     PrismaModule,
     
     // Redis缓存配置
+    // cache-manager v7 は内部で Keyv を使うため、Keyv アダプタ経由で Redis に接続する。
+    // 旧 cache-manager-redis-store は Keyv 以前の実装で、v7 では set が成功を返しても
+    // 実際には Redis に書き込まれない（サイレント失敗）ため使用しない。
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        store: redisStore as any,
-        host: configService.get('REDIS_HOST', 'localhost'),
-        port: configService.get('REDIS_PORT', 6379),
-        password: configService.get('REDIS_PASSWORD', ''),
-        ttl: Number(configService.get('REDIS_TTL', 3600)), // 默认缓存1小时
-        max: 1000, // 最大缓存项数
+        stores: [
+          createKeyv({
+            url: `redis://${configService.get('REDIS_HOST', 'localhost')}:${configService.get('REDIS_PORT', 6379)}`,
+            password: configService.get('REDIS_PASSWORD') || undefined,
+          }),
+        ],
+        ttl: Number(configService.get('REDIS_TTL', 3600)), // 默认缓存1小时（ミリ秒）
       }),
       inject: [ConfigService],
     }),
