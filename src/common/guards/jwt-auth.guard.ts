@@ -56,7 +56,7 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.verifyToken(token);
         
       // 获取用户信息
-      const user = await this.getUserFromPayload(payload);
+      const user = await this.getUserFromPayload(payload, request);
         
       if (!user) {
         throw new AuthenticationException('用户不存在');
@@ -134,9 +134,10 @@ export class JwtAuthGuard implements CanActivate {
    * 从JWT载荷中获取用户信息，并检测角色是否已发生变更
    * 若 JWT 中记录的角色与数据库当前角色不一致，则抛出专用异常让前端处理跳转
    * @param payload JWT载荷
+   * @param request 请求对象
    * @returns 用户信息
    */
-  private async getUserFromPayload(payload: any): Promise<any> {
+  private async getUserFromPayload(payload: any, request: Request): Promise<any> {
     const { sub: userId, phoneHash, userType, role } = payload;
 
     // 根据用户ID或手机号哈希查找用户
@@ -166,7 +167,7 @@ export class JwtAuthGuard implements CanActivate {
       const dbRole = (user.userType || '').toString().toUpperCase();
 
       // 检测角色是否已发生变更
-      if (jwtRole && dbRole && jwtRole !== dbRole) {
+      if (jwtRole && dbRole && jwtRole !== dbRole && !request.path?.endsWith('/auth/logout')) {
         if (jwtRole === 'ADMIN' && dbRole !== 'ADMIN') {
           // ADMIN → 普通用户：降权，需要强制前端重新登录
           this.logger.warn(`角色降权检测: 用户 ${userId} JWT角色=${jwtRole} 数据库角色=${dbRole}，拒绝访问`);
