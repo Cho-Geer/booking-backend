@@ -34,6 +34,7 @@
     "db:init": "npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed"
   },
   "dependencies": {
+    "@keyv/redis": "^5.1.6",
     "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/axios": "^3.1.3",
     "@nestjs/cache-manager": "^3.0.1",
@@ -49,7 +50,6 @@
     "@nestjs/throttler": "^6.4.0",
     "@nestjs/websockets": "^10.4.20",
     "@prisma/client": "^6.16.2",
-    "@keyv/redis": "^5.1.6",
     "axios": "^1.20.0",
     "bcrypt": "^5.1.0",
     "cache-manager": "^7.2.0",
@@ -84,6 +84,7 @@
     "@types/supertest": "^2.0.16",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "dotenv": "^16.6.1",
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^8.8.0",
     "eslint-plugin-prettier": "^4.2.1",
