@@ -165,10 +165,24 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
+    const phoneNumber = '13800138000';
+    const codeKey = `verification_code:register:${phoneNumber}`;
+    const issuedEmailKey = `verification_code_email:register:${phoneNumber}`;
+    const boundEmail = 'new-user@example.com';
+
     const registerDto: RegisterDto = {
-      phoneNumber: '13800138000',
+      phoneNumber,
       verificationCode: '123456',
       name: '新用户',
+      email: boundEmail,
+    };
+
+    const mockIssuedEmail = (issuedEmail: string | undefined) => {
+      mockCacheManager.get.mockImplementation((key: string) => {
+        if (key === codeKey) return Promise.resolve('123456');
+        if (key === issuedEmailKey) return Promise.resolve(issuedEmail);
+        return Promise.resolve(undefined);
+      });
     };
 
     it('应该成功注册', async () => {
@@ -180,7 +194,7 @@ describe('AuthService', () => {
         status: UserStatus.ACTIVE,
       };
 
-      mockCacheManager.get.mockResolvedValue('123456');
+      mockIssuedEmail(boundEmail);
       mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
       mockUsersService.createUser.mockResolvedValue(mockUser);
 
@@ -190,22 +204,76 @@ describe('AuthService', () => {
       expect(result.user.name).toBe('新用户');
     });
 
+    it('邮箱的大小写・前後空白の差は正規化して一致とみなす', async () => {
+      const mockUser = {
+        id: 'new-user-id',
+        name: '新用户',
+        phone: '138****8000',
+        userType: UserType.CUSTOMER,
+        status: UserStatus.ACTIVE,
+      };
+
+      mockIssuedEmail('  New-User@Example.COM  ');
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+      mockUsersService.createUser.mockResolvedValue(mockUser);
+
+      const result = await service.register(registerDto);
+
+      expect(result.accessToken).toBeDefined();
+    });
+
+    it('email が発码宛先と一致しない場合は拒否しコードを消費しない', async () => {
+      mockIssuedEmail('someone-else@example.com');
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+
+      await expect(service.register(registerDto)).rejects.toThrow(VerificationCodeException);
+
+      // 不一致時は validate 前に中断し、コード・试行カウンタを消費しない
+      expect(mockCacheManager.del).not.toHaveBeenCalledWith(codeKey);
+      expect(mockCacheManager.del).not.toHaveBeenCalledWith(
+        `verification_code:attempts:register:${phoneNumber}`,
+      );
+      expect(mockUsersService.createUser).not.toHaveBeenCalled();
+    });
+
+    it('email 未指定の場合は拒否する', async () => {
+      mockIssuedEmail(boundEmail);
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+
+      await expect(
+        service.register({ ...registerDto, email: undefined }),
+      ).rejects.toThrow(VerificationCodeException);
+
+      expect(mockCacheManager.del).not.toHaveBeenCalledWith(codeKey);
+      expect(mockUsersService.createUser).not.toHaveBeenCalled();
+    });
+
+    it('発码宛先が保存されていない場合（未送信）は拒否する', async () => {
+      mockIssuedEmail(undefined);
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+
+      await expect(service.register(registerDto)).rejects.toThrow(VerificationCodeException);
+
+      expect(mockUsersService.createUser).not.toHaveBeenCalled();
+    });
+
     it('应该抛出手机号已存在异常', async () => {
       const existingUser = { id: 'existing-user-id' };
 
-      mockCacheManager.get.mockResolvedValue('123456');
+      mockIssuedEmail(boundEmail);
       mockUsersService.findUserByPhoneNumber.mockResolvedValue(existingUser);
 
       await expect(service.register(registerDto)).rejects.toThrow(PhoneNumberExistsException);
     });
 
-
     it('应该透传邮箱已存在异常', async () => {
-      mockCacheManager.get.mockResolvedValue('123456');
-      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
-      mockUsersService.createUser.mockRejectedValue(new EmailExistsException('test@example.com'));
+      const existingEmail = 'test@example.com';
 
-      await expect(service.register({ ...registerDto, email: 'test@example.com' })).rejects.toThrow(EmailExistsException);
+      mockIssuedEmail(existingEmail);
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+      mockUsersService.createUser.mockRejectedValue(new EmailExistsException(existingEmail));
+
+      await expect(service.register({ ...registerDto, email: existingEmail })).rejects.toThrow(EmailExistsException);
     });
   });
 
@@ -415,6 +483,58 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBeDefined();
       expect(mockCacheManager.del).toHaveBeenCalledWith(`verification_code:login:${phoneNumber}`);
+    });
+
+    it('再送後は试行回数がリセットされ、4 回误输入済みでも新コードが有効', async () => {
+      // 実運用に近い get/set/del の往復を再現するステートフルなストア
+      const store = new Map<string, unknown>();
+      mockCacheManager.get.mockImplementation((key: string) => Promise.resolve(store.get(key)));
+      mockCacheManager.set.mockImplementation((key: string, value: unknown) => {
+        store.set(key, value);
+        return Promise.resolve(undefined);
+      });
+      mockCacheManager.del.mockImplementation((key: string) => {
+        store.delete(key);
+        return Promise.resolve(undefined);
+      });
+
+      const codeKey = `verification_code:login:${phoneNumber}`;
+      const attemptsKey = `verification_code:attempts:login:${phoneNumber}`;
+      const mockUser = {
+        id: 'user-id',
+        name: '测试用户',
+        phone: '138****8000',
+        userType: UserType.CUSTOMER,
+        status: UserStatus.ACTIVE,
+      };
+
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(mockUser);
+      mockUsersService.findUserEmailByPhoneNumber.mockResolvedValue('bound@example.com');
+      mockEmailService.sendVerificationCode.mockResolvedValue(undefined);
+
+      // 既存コードに対して 4 回误输入（上限 5 回の手前まで）
+      store.set(codeKey, '111111');
+      for (let i = 0; i < 4; i += 1) {
+        await expect(service.login(loginDto)).rejects.toThrow(VerificationCodeException);
+      }
+      expect(store.get(attemptsKey)).toBe(4);
+
+      // 再送（メール送信成功）→ 试行カウンタがフルリセットされる
+      await service.sendVerificationCode(phoneNumber, VerificationCodeType.LOGIN);
+      expect(store.has(attemptsKey)).toBe(false);
+
+      const newCodeCalls = mockEmailService.sendVerificationCode.mock.calls;
+      const newCode = newCodeCalls[newCodeCalls.length - 1][1] as string;
+      expect(newCode).toMatch(/^\d{6}$/);
+
+      // リセットされていなければこの 1 回で 5 回目となり新コードが失効してしまう
+      await expect(service.login(loginDto)).rejects.toThrow(VerificationCodeException);
+      expect(store.get(attemptsKey)).toBe(1);
+      expect(store.get(codeKey)).toBe(newCode);
+
+      // 新しいコードは有効（4 回误输入の履歴に食われない）
+      const result = await service.login({ phoneNumber, verificationCode: newCode });
+      expect(result.accessToken).toBeDefined();
     });
   });
 

@@ -12,7 +12,7 @@ import type { Cache } from 'cache-manager';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 import { EmailService } from '../src/modules/email/email.service';
-import { createHash } from 'crypto';
+import { createHash, randomInt } from 'crypto';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -144,6 +144,95 @@ describe('AuthController (e2e)', () => {
       );
       const storedCode = await cacheManager.get(`verification_code:register:${registerPhoneNumber}`);
       expect(String(storedCode)).toMatch(/^\d{6}$/);
+      // 発码宛先が正規化して保存される（登録時の一致確認に使用）
+      const issuedEmail = await cacheManager.get(
+        `verification_code_email:register:${registerPhoneNumber}`,
+      );
+      expect(String(issuedEmail)).toBe(registerEmail);
+    });
+  });
+
+  describe('/v1/auth/register (POST)', () => {
+    // 実行ごと・テストごとに一意な 11 桁（138 + 乱数 7 桁 + 連番 1 桁）を使い、
+    // 前回実行や他テストの宛先クールダウン残存に依存しない
+    let registerSeq = 0;
+    const makeRegisterPhoneNumber = () =>
+      `138${String(randomInt(0, 10000000)).padStart(7, '0')}${registerSeq++}`;
+
+    it('应该成功注册当邮箱与发码宛先一致', async () => {
+      const phoneNumber = makeRegisterPhoneNumber();
+      const email = 'register-flow@example.com';
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/send-verification-code')
+        .send({ phoneNumber, type: 'register', email })
+        .expect(200);
+
+      const code = await cacheManager.get(`verification_code:register:${phoneNumber}`);
+
+      const response = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({ name: 'Register Flow User', phoneNumber, email, verificationCode: String(code) })
+        .expect(201);
+
+      expect(response.body.data?.accessToken).toBeDefined();
+      // 消費後はコードが削除される
+      expect(await cacheManager.get(`verification_code:register:${phoneNumber}`)).toBeFalsy();
+    });
+
+    it('邮箱与发码宛先不一致时返回 400 且不消费验证码', async () => {
+      const phoneNumber = makeRegisterPhoneNumber();
+      const email = 'issued-to@example.com';
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/send-verification-code')
+        .send({ phoneNumber, type: 'register', email })
+        .expect(200);
+
+      const code = await cacheManager.get(`verification_code:register:${phoneNumber}`);
+
+      const response = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({
+          name: 'Mismatch User',
+          phoneNumber,
+          email: 'someone-else@example.com',
+          verificationCode: String(code),
+        })
+        .expect(400);
+
+      expect(response.body.message).toBe('验证码与邮箱不匹配，请重新获取');
+      // 不一致時はコード・试行カウンタを消費しない
+      expect(String(await cacheManager.get(`verification_code:register:${phoneNumber}`))).toBe(
+        String(code),
+      );
+      expect(
+        await cacheManager.get(`verification_code:attempts:register:${phoneNumber}`),
+      ).toBeFalsy();
+    });
+
+    it('正規化（大文字・小文字）しても同一邮箱なら注册成功', async () => {
+      const phoneNumber = makeRegisterPhoneNumber();
+      const email = 'normalized@example.com';
+
+      await request(app.getHttpServer())
+        .post('/v1/auth/send-verification-code')
+        .send({ phoneNumber, type: 'register', email })
+        .expect(200);
+
+      const code = await cacheManager.get(`verification_code:register:${phoneNumber}`);
+
+      const response = await request(app.getHttpServer())
+        .post('/v1/auth/register')
+        .send({
+          name: 'Normalized User',
+          phoneNumber,
+          email: 'Normalized@Example.COM',
+          verificationCode: String(code),
+        })
+        .expect(201);
+
+      expect(response.body.data?.accessToken).toBeDefined();
     });
   });
 });

@@ -122,6 +122,9 @@ export class AuthService {
    */
   async register(registerDto: RegisterDto): Promise<LoginResponseDto> {
     try {
+      // 登録メールと発码宛先の一致確認（不一致の場合はコードを消費せずに中断）
+      await this.assertRegisterEmailMatches(registerDto.phoneNumber, registerDto.email);
+
       // 验证验证码
       const isValidCode = await this.validateVerificationCode(
         registerDto.phoneNumber,
@@ -284,14 +287,25 @@ export class AuthService {
           VERIFICATION_CODE_EXPIRES_MINUTES,
         );
       } catch (error) {
+        // SMTP エラーの生メッセージは RCPT アドレス等を含み得るため出さない（固定文 + マスク宛先 + エラーコードのみ）
+        const errorCode = (error as { code?: unknown })?.code;
+        const codeSuffix =
+          typeof errorCode === 'string' && errorCode.length <= 40 ? ` (code: ${errorCode})` : '';
         this.logger.error(
-          `验证码邮件发送失败: ${MaskingUtil.maskPhoneNumber(phoneNumber)} - ${error.message}`,
+          `验证码邮件发送失败: ${MaskingUtil.maskEmail(recipientEmail)}${codeSuffix}`,
         );
         throw new ExternalServiceException('邮件服务', '验证码邮件发送失败');
       }
 
       // 7. 保存验证码到Redis（素の6桁文字列・type スコープキー）
       await this.saveVerificationCode(phoneNumber, verificationCode, type);
+
+      // 7b. 発码宛先メールを保存（登録時に「コードの宛先 = 登録メール」を強制するため・TTL はコードと同じ）
+      await this.cacheManager.set(
+        this.getVerificationCodeEmailKey(type, phoneNumber),
+        this.normalizeEmail(recipientEmail),
+        VERIFICATION_CODE_TTL_MS,
+      );
 
       // 8. 发送成功后才设置クールダウン
       await this.cacheManager.set(cooldownKey, 1, VERIFICATION_CODE_COOLDOWN_MS);
@@ -603,6 +617,46 @@ export class AuthService {
   }
 
   /**
+   * 発码宛先メールの键（type スコープ）
+   * 登録時に「コードの宛先 = 登録メール」を強制するため、送信成功時に保存する
+   */
+  private getVerificationCodeEmailKey(type: VerificationCodeType, phoneNumber: string): string {
+    return `verification_code_email:${type}:${phoneNumber}`;
+  }
+
+  /**
+   * メールアドレスの正規化（前後空白除去 + 小文字化）
+   */
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
+  /**
+   * 登録メールが発码宛先と一致することを確認する
+   * 不一致（保存なし・email 未指定を含む）の場合はコードを消費せずに例外を投げる
+   * @param phoneNumber 手机号
+   * @param email 登録リクエストのメール
+   */
+  private async assertRegisterEmailMatches(phoneNumber: string, email?: string): Promise<void> {
+    // 他情報を漏らさないため、原因（未発码 / 不一致 / email 未指定）によらず同一メッセージ
+    const mismatch = new VerificationCodeException('验证码与邮箱不匹配，请重新获取');
+
+    if (!email) {
+      throw mismatch;
+    }
+
+    const issuedEmailKey = this.getVerificationCodeEmailKey(
+      VerificationCodeType.REGISTER,
+      phoneNumber,
+    );
+    const issuedEmail = await this.cacheManager.get<string>(issuedEmailKey);
+
+    if (!issuedEmail || this.normalizeEmail(issuedEmail) !== this.normalizeEmail(email)) {
+      throw mismatch;
+    }
+  }
+
+  /**
    * 验证验证码
    * 误输入次数达到上限时作废当前验证码；失败メッセージは「不存在」と「不一致」を区別しない
    * @param phoneNumber 手机号
@@ -673,6 +727,9 @@ export class AuthService {
     // 注意: cache-manager v5+ 使用毫秒作为TTL，而 v4 使用秒
     // 假设使用的是较新版本，或者根据项目配置调整
     await this.cacheManager.set(key, verificationCode, VERIFICATION_CODE_TTL_MS);
+
+    // 再送時は试行カウンタをリセットする（前のコードへの误输入が新しいコードの試行枠を食わないように）
+    await this.cacheManager.del(this.getVerificationCodeAttemptsKey(type, phoneNumber));
 
     // 开发环境下打印验证码，方便测试（手机号はマスクして出力）
     if (process.env.NODE_ENV !== 'production') {
