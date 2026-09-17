@@ -134,4 +134,33 @@ describe('EmailService', () => {
       );
     });
   });
+
+  describe('sendVerificationCode', () => {
+    it('应该成功发送验证码邮件（件名与本文含6桁代码与有效期）', async () => {
+      await service.sendVerificationCode('user@example.com', '123456', 5);
+
+      expect(mockMailerService.sendMail).toHaveBeenCalledWith({
+        to: 'user@example.com',
+        subject: expect.stringContaining('123456'),
+        template: './verification-code',
+        context: {
+          code: '123456',
+          expiresMinutes: 5,
+        },
+      });
+      expect(mockMailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: expect.stringContaining('5分钟'),
+        }),
+      );
+    });
+
+    it('发送失败时应该抛出异常（認証フロー中断用・握りつぶし禁止）', async () => {
+      mockMailerService.sendMail.mockRejectedValueOnce(new Error('SMTP Error'));
+
+      await expect(
+        service.sendVerificationCode('user@example.com', '123456', 5)
+      ).rejects.toThrow('SMTP Error');
+    });
+  });
 });

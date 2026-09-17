@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -17,6 +18,8 @@ describe('AuthController', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
+      // 発码エンドポイントの ThrottlerGuard を解決するため（AuthModule と同じ設定）
+      imports: [ThrottlerModule.forRoot([{ ttl: 60 * 1000, limit: 5 }])],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },

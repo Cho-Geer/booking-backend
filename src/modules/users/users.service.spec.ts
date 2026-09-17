@@ -4,6 +4,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { createHash } from 'crypto';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -202,6 +203,39 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue(null);
 
       await expect(service.findUserById(userId)).rejects.toThrow(ResourceNotFoundException);
+    });
+  });
+
+  describe('findUserEmailByPhoneNumber', () => {
+    const phoneNumber = '13800138000';
+    const expectedPhoneHash = createHash('sha256').update(phoneNumber).digest('hex');
+
+    it('应该按手机号哈希返回未脱敏邮箱', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({ email: 'user@example.com' });
+
+      const result = await service.findUserEmailByPhoneNumber(phoneNumber);
+
+      expect(result).toBe('user@example.com');
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { phoneHash: expectedPhoneHash },
+        select: { email: true },
+      });
+    });
+
+    it('用户不存在时应该返回 null', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.findUserEmailByPhoneNumber(phoneNumber);
+
+      expect(result).toBeNull();
+    });
+
+    it('用户未绑定邮箱时应该返回 null', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({ email: null });
+
+      const result = await service.findUserEmailByPhoneNumber(phoneNumber);
+
+      expect(result).toBeNull();
     });
   });
 

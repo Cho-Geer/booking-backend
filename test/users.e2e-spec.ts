@@ -9,6 +9,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
+import { EmailService } from '../src/modules/email/email.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { createHash } from 'crypto';
@@ -27,19 +28,31 @@ describe('UsersController (e2e)', () => {
   const nextPhone = () => `1350013${String(phoneSeq++).padStart(4, '0')}`;
 
   const makePhoneHash = (phoneNumber: string) => createHash('sha256').update(phoneNumber).digest('hex');
+  const makeEmail = (phoneNumber: string) => `user-${phoneNumber}@example.com`;
+
+  // 実 SMTP に接続しないよう EmailService をスタブ化（MAIL_* 未設定でも落ちないように）
+  const mockEmailService = {
+    sendBookingConfirmation: jest.fn().mockResolvedValue(undefined),
+    sendBookingCancellation: jest.fn().mockResolvedValue(undefined),
+    sendBookingUpdate: jest.fn().mockResolvedValue(undefined),
+    sendVerificationCode: jest.fn().mockResolvedValue(undefined),
+  };
 
   const ensureUser = async (phoneNumber: string, userType: 'ADMIN' | 'CUSTOMER') => {
+    const email = makeEmail(phoneNumber);
     await prismaService.user.upsert({
       where: { phone: phoneNumber },
       update: {
         userType,
         status: 'ACTIVE',
         isVerified: true,
+        email,
       },
       create: {
         name: userType === 'ADMIN' ? 'Admin User' : 'Normal User',
         phone: phoneNumber,
         phoneHash: makePhoneHash(phoneNumber),
+        email,
         userType,
         status: 'ACTIVE',
         isVerified: true,
@@ -48,19 +61,19 @@ describe('UsersController (e2e)', () => {
   };
 
   const loginAndGetToken = async (phoneNumber: string) => {
-    await request(app.getHttpServer())
-      .post('/v1/auth/send-verification-code')
-      .send({ phoneNumber, type: 'login' })
-      .expect(200);
-
-    const code = await cacheManager.get<string>(`verification_code:${phoneNumber}`);
-    if (!code) {
-      throw new Error(`Missing verification code for ${phoneNumber}`);
-    }
+    // 発码エンドポイントは IP 単位レート制限（5回/60秒）と宛先別クールダウン（60秒）の対象になるため、
+    // 同一 IP から繰り返しログインする本ファイルでは送信 API を叩かず、
+    // type スコープ化されたキーへ直接コードを投入してログインする。
+    const verificationCode = '123456';
+    await cacheManager.set(
+      `verification_code:login:${phoneNumber}`,
+      verificationCode,
+      300 * 1000,
+    );
 
     const loginResponse = await request(app.getHttpServer())
       .post('/v1/auth/login')
-      .send({ phoneNumber, verificationCode: String(code) })
+      .send({ phoneNumber, verificationCode })
       .expect(200);
 
     const token = loginResponse.body?.data?.accessToken as string | undefined;
@@ -79,7 +92,10 @@ describe('UsersController (e2e)', () => {
 
     moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(EmailService)
+      .useValue(mockEmailService)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('v1');
