@@ -25,7 +25,8 @@ export class EmailService {
       this.logger.log(`Sending verification code email to ${MaskingUtil.maskEmail(to)}`);
       await this.mailerService.sendMail({
         to,
-        subject: `验证码 ${code}（${expiresMinutes}分钟内有效） - Booking System`,
+        // 件名にコードを入れない（メール一覧のプレビューや通知から漏れないように）
+        subject: '【Booking System】邮箱验证码',
         template: './verification-code',
         context: {
           code,

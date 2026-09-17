@@ -35,15 +35,16 @@ CacheModule.registerAsync({
 
 ## 2. 格納スキーマ（実装ベース）
 
-実際に使われているキーは**以下の 5 種類（6 パターン）のみ**。
+実際に使われているキーは**以下の 6 種類（7 パターン）のみ**。
 
 | キー | 値 | TTL | 用途 | コード根拠 |
 |---|---|---|---|---|
-| `blacklist:{sha256(accessToken)}` | `1` | トークン残り有効期限 | **ログアウトしたアクセストークンの失効** | set: `auth.service.ts` L418 / get: `jwt-auth.guard.ts` L111 |
-| `blacklist:{sha256(refreshToken)}` | `1` | トークン残り有効期限 | **リフレッシュトークンの失効** | set: `auth.service.ts` L387 / `users.service.ts` L303 / get: `auth.service.ts` L190 |
-| `verification_code:{type}:{phoneNumber}` | 6桁コード（素の文字列） | **300 秒（5分）** | **メール認証コード**（使い捨て・type スコープ） | set: `auth.service.ts` L675 / get+del: `auth.service.ts` L620, L646 |
-| `verification_code:attempts:{type}:{phoneNumber}` | 误输入回数（数値） | **300 秒（5分）** | **認証コードの総当たり抑止カウンタ**（上限 5 回でコードを失効） | set: `auth.service.ts` L641 / get: `auth.service.ts` L628 / del: `auth.service.ts` L634, L647 |
-| `verification_code:cooldown:{type}:{phoneNumber}` | `1` | **60 秒** | **宛先別の再送クールダウン**（連投抑止） | set: `auth.service.ts` L297 / get: `auth.service.ts` L247 |
+| `blacklist:{sha256(accessToken)}` | `1` | トークン残り有効期限 | **ログアウトしたアクセストークンの失効** | set: `auth.service.ts` L432 / get: `jwt-auth.guard.ts` L111 |
+| `blacklist:{sha256(refreshToken)}` | `1` | トークン残り有効期限 | **リフレッシュトークンの失効** | set: `auth.service.ts` L401 / `users.service.ts` L303 / get: `auth.service.ts` L193 |
+| `verification_code:{type}:{phoneNumber}` | 6桁コード（素の文字列） | **300 秒（5分）** | **メール認証コード**（使い捨て・type スコープ） | set: `auth.service.ts` L729 / get+del: `auth.service.ts` L674, L700 |
+| `verification_code:attempts:{type}:{phoneNumber}` | 误输入回数（数値） | **300 秒（5分）** | **認証コードの総当たり抑止カウンタ**（上限 5 回でコードを失効、再送でリセット） | set: `auth.service.ts` L695 / get: `auth.service.ts` L682 / del: `auth.service.ts` L688, L701, L732 |
+| `verification_code:cooldown:{type}:{phoneNumber}` | `1` | **60 秒** | **宛先別の再送クールダウン**（連投抑止） | set: `auth.service.ts` L311 / get: `auth.service.ts` L250 |
+| `verification_code_email:{type}:{phoneNumber}` | 発码宛先メール（正規化済み） | **300 秒（5分）** | **登録時の「コード宛先 = 登録メール」一致強制** | set: `auth.service.ts` L304 / get: `auth.service.ts` L652 |
 | `health:redis:{Date.now()}` | `'ok'` | 5 秒 | **ヘルスチェックの疎通確認** | `health.service.ts` L55-L64 |
 
 ---
@@ -96,16 +97,21 @@ TTL を**トークンの残り有効期限**に合わせることで、有効期
 
 認証コードは**メール送信**で配送される（旧 SMS 想定は廃止）。キーは用途（`login` / `register`）ごとに
 分離するため `verification_code:{type}:{phoneNumber}` の形式をとる。値は**素の 6 桁文字列**。
+発码宛先は `verification_code_email:{type}:{phoneNumber}` に正規化（trim + 小文字化）して保存し、
+`register` はコード検証より前に登録メールと突合する（不一致はコードを消費せず拒否）。
 
 ```typescript
-// 発码（auth.service.ts L273-L297）: コード生成 → メール送信 → Redis 保存 → クールダウン
-//   メール送信に失敗した場合は throw して中断（Redis には保存されない）L280-L291
+// 発码（auth.service.ts L277-L315）: コード生成 → メール送信 → Redis 保存 → 宛先記録 → クールダウン
+//   メール送信に失敗した場合は throw して中断（Redis には保存されない）L282-L298
 const key = `verification_code:${type}:${phoneNumber}`;
-await this.cacheManager.set(key, verificationCode, VERIFICATION_CODE_TTL_MS);  // 5分 (L675)
-// 送信成功時のみクールダウン（60秒）を設定 (L297)
+await this.cacheManager.set(key, verificationCode, VERIFICATION_CODE_TTL_MS);  // 5分 (L729)
+// 再送時は误输入カウンタをリセット (L732)
+// 発码宛先メールを正規化して保存（5分・L304）
+await this.cacheManager.set(`verification_code_email:${type}:${phoneNumber}`, normalizedEmail, TT);
+// 送信成功時のみクールダウン（60秒）を設定 (L311)
 await this.cacheManager.set(`verification_code:cooldown:${type}:${phoneNumber}`, 1, 60 * 1000);
 
-// 検証（L613-L650）: get → 一致確認 → del（使い捨て）
+// 検証（L667-L703）: get → 一致確認 → del（使い捨て）
 const storedCode = await this.cacheManager.get<string>(key);
 if (storedCode !== verificationCode) {
   // 误输入回数を get→set の read-modify-write で加算（上限 5 回でコードを削除）
@@ -136,7 +142,7 @@ if (value !== 'ok') throw new Error('Redis round-trip verification failed');
 | `slot:availability:{slotId}`（時間枠可用性） | 30 分 | ❌ 未実装 |
 | `slot:{slotId}:remaining`（残枠カウンタ） | 動的 | ❌ 未実装 |
 
-**実際に Redis を使っているのは「ブラックリスト」「検証コード」「ヘルスチェック」の 3 用途のみ**で、規約のキャッシュ設計（セッション・時間枠キャッシュ）は未導入。検証コードは用途（type）スコープ・再送クールダウン・誤入力カウンタを含めると 3 種類のキーを占める（キー総数は 5 種類）。
+**実際に Redis を使っているのは「ブラックリスト」「検証コード」「ヘルスチェック」の 3 用途のみ**で、規約のキャッシュ設計（セッション・時間枠キャッシュ）は未導入。検証コードは用途（type）スコープ・再送クールダウン・誤入力回数カウンタ・発码宛先を含めると 4 種類のキーを占める（キー総数は 6 種類）。
 
 ---
 
@@ -145,7 +151,7 @@ if (value !== 'ok') throw new Error('Redis round-trip verification failed');
 | ファイル | 役割 |
 |---|---|
 | `src/app.module.ts` | Redis（CacheModule）接続設定（L44-L56） |
-| `src/modules/auth/auth.service.ts` | ブラックリスト書込・メール認証コード保存/検証（type スコープ・クールダウン・誤入力カウンタ）・リフレッシュ時ブラックリスト確認 |
+| `src/modules/auth/auth.service.ts` | ブラックリスト書込・メール認証コード保存/検証（type スコープ・クールダウン・誤入力カウンタ・発码宛先）・リフレッシュ時ブラックリスト確認 |
 | `src/common/guards/jwt-auth.guard.ts` | 認証時のブラックリスト確認 |
 | `src/modules/users/users.service.ts` | 全セッション無効化時のリフレッシュトークンブラックリスト追加 |
 | `src/common/health/health.service.ts` | Redis 疎通確認（ヘルスチェック） |
@@ -162,25 +168,29 @@ if (value !== 'ok') throw new Error('Redis round-trip verification failed');
 45:      isGlobal: true,
 48:        store: redisStore as any,
 検証コマンド: grep -n "blacklist:\|cacheManager.set(\`blacklist\|cacheManager.get(\`blacklist" src/common/guards/jwt-auth.guard.ts src/modules/auth/auth.service.ts src/modules/users/users.service.ts
-src/modules/auth/auth.service.ts:190:      const isBlacklisted = await this.cacheManager.get(`blacklist:${tokenHash}`);
-src/modules/auth/auth.service.ts:387:        await this.cacheManager.set(`blacklist:${tokenHash}`, 1, ttl * 1000);
-src/modules/auth/auth.service.ts:418:        await this.cacheManager.set(`blacklist:${tokenHash}`, 1, ttl * 1000);
+src/modules/auth/auth.service.ts:193:      const isBlacklisted = await this.cacheManager.get(`blacklist:${tokenHash}`);
+src/modules/auth/auth.service.ts:401:        await this.cacheManager.set(`blacklist:${tokenHash}`, 1, ttl * 1000);
+src/modules/auth/auth.service.ts:432:        await this.cacheManager.set(`blacklist:${tokenHash}`, 1, ttl * 1000);
 src/common/guards/jwt-auth.guard.ts:111:      const isBlacklisted = await this.cacheManager.get(`blacklist:${tokenHash}`);
 src/modules/users/users.service.ts:303:              await this.cacheManager.set(`blacklist:${refreshTokenHash}`, 1, refreshTtl);
-検証コマンド: grep -n "verification_code:\|VERIFICATION_CODE_TTL_MS\|getVerificationCodeKey\|getVerificationCodeAttemptsKey\|getVerificationCodeCooldownKey\|VERIFICATION_CODE_COOLDOWN_MS\|VERIFICATION_CODE_MAX_ATTEMPTS" src/modules/auth/auth.service.ts
+検証コマンド: grep -n "verification_code\|VERIFICATION_CODE_TTL_MS\|getVerificationCodeKey\|getVerificationCodeAttemptsKey\|getVerificationCodeCooldownKey\|getVerificationCodeEmailKey\|VERIFICATION_CODE_COOLDOWN_MS\|VERIFICATION_CODE_MAX_ATTEMPTS" src/modules/auth/auth.service.ts
 37:const VERIFICATION_CODE_TTL_MS = 5 * 60 * 1000;
 41:const VERIFICATION_CODE_MAX_ATTEMPTS = 5;
 43:const VERIFICATION_CODE_COOLDOWN_MS = 60 * 1000;
-246:      const cooldownKey = this.getVerificationCodeCooldownKey(type, phoneNumber);
-297:      await this.cacheManager.set(cooldownKey, 1, VERIFICATION_CODE_COOLDOWN_MS);
-588:    return `verification_code:${type}:${phoneNumber}`;
-595:    return `verification_code:attempts:${type}:${phoneNumber}`;
-602:    return `verification_code:cooldown:${type}:${phoneNumber}`;
-618:    const key = this.getVerificationCodeKey(type, phoneNumber);
-619:    const attemptsKey = this.getVerificationCodeAttemptsKey(type, phoneNumber);
-631:      if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
-641:      await this.cacheManager.set(attemptsKey, attempts, VERIFICATION_CODE_TTL_MS);
-675:    await this.cacheManager.set(key, verificationCode, VERIFICATION_CODE_TTL_MS);
+249:      const cooldownKey = this.getVerificationCodeCooldownKey(type, phoneNumber);
+305:        this.getVerificationCodeEmailKey(type, phoneNumber);
+311:      await this.cacheManager.set(cooldownKey, 1, VERIFICATION_CODE_COOLDOWN_MS);
+601:    return `verification_code:${type}:${phoneNumber}`;
+608:  private getVerificationCodeAttemptsKey(...)
+615:  private getVerificationCodeCooldownKey(...)
+624:    return `verification_code_email:${type}:${phoneNumber}`;
+672:    const key = this.getVerificationCodeKey(type, phoneNumber);
+673:    const attemptsKey = this.getVerificationCodeAttemptsKey(type, phoneNumber);
+685:      if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+695:      await this.cacheManager.set(attemptsKey, attempts, VERIFICATION_CODE_TTL_MS);
+725:    const key = this.getVerificationCodeKey(type, phoneNumber);
+729:    await this.cacheManager.set(key, verificationCode, VERIFICATION_CODE_TTL_MS);
+732:    await this.cacheManager.del(this.getVerificationCodeAttemptsKey(type, phoneNumber));
 検証コマンド: grep -n "health:redis\|cacheManager.set(key, 'ok'\|cacheManager.get<string>(key)\|Redis round-trip" src/common/health/health.service.ts
 55:    const key = `health:redis:${Date.now()}`;
 59:      await this.cacheManager.set(key, 'ok', 5_000);

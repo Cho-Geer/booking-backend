@@ -141,6 +141,12 @@ List endpoints that paginate use this shape:
 
 - notes:
   Registration also sets auth cookies on success.
+  The submitted `email` must match (case-insensitively, surrounding whitespace ignored) the
+  address the verification code was issued to by `POST /v1/auth/send-verification-code`
+  (`type=register`); a missing or mismatching `email` returns
+  `400 VERIFICATION_CODE_ERROR` with the message `验证码与邮箱不匹配，请重新获取`
+  **without consuming the code or the attempt counter**, so the user can retry with the
+  correct address until the code expires.
 
 ### `POST /v1/auth/send-verification-code`
 
@@ -171,12 +177,15 @@ List endpoints that paginate use this shape:
 
 - notes:
   `type` must be `login` or `register`.
-  The 6-digit code is delivered by email and is valid for 5 minutes.
-  `email` is required when `type=register` (the code is sent to that address) and must be
-  omitted when `type=login` (the code is sent to the email bound to the account; sending to
-  a request-supplied address is not allowed).
+  The 6-digit code is delivered by email and is valid for 5 minutes. The subject line never
+  contains the code.
+  `email` is required when `type=register` (the code is sent to that address); for
+  `type=login` it is ignored and the code is sent to the email bound to the account.
+  The address the code was issued to is recorded for 5 minutes so that
+  `POST /v1/auth/register` can require the same address (see that endpoint).
   Rate limits: `429` when more than 5 requests per 60 s come from the same IP (endpoint-level
   throttle) or when the same recipient requests again within the 60 s cooldown.
+  Requesting a new code resets the wrong-code attempt counter for that phone number and type.
   Errors: `400 RECIPIENT_EMAIL_MISSING` when no recipient email can be resolved (register
   without `email`, or login for an account without a bound email), `502
   EXTERNAL_SERVICE_ERROR` when the email cannot be sent (no code is stored in that case).

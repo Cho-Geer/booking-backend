@@ -160,7 +160,11 @@ describe('Email Service (E2E) with TestContainers', () => {
 
       // To ヘッダは生のアドレス（ASCII）で断言
       expect(latestMessage.Content.Headers.To[0]).toBe(to);
-      expect(latestMessage.Content.Headers.Subject[0]).toBeDefined();
+
+      // 件名は平文コードを含まない（MIME エンコードされ得るため非含有のみ断言）
+      const subject = latestMessage.Content.Headers.Subject[0];
+      expect(subject).toBeDefined();
+      expect(subject).not.toContain(code);
 
       // 本文（quoted-printable でも数字はリテラル保持される）に 6 桁コードが含まれる
       const body = latestMessage.Content.Body;
