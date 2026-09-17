@@ -141,6 +141,23 @@ export class UsersService {
   }
 
   /**
+   * 根据手机号查找账号绑定邮箱（未脱敏）
+   *
+   * 認証コードの送信先解決専用。mapToResponseDto は email をマスクするため、
+   * 送信先としては使えない。ここでは生の email のみを返す。
+   * @param phoneNumber 手机号
+   * @returns 邮箱地址或null（用户不存在・未绑定邮箱の場合）
+   */
+  async findUserEmailByPhoneNumber(phoneNumber: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { phoneHash: this.hashPhoneNumber(phoneNumber) },
+      select: { email: true },
+    });
+
+    return user?.email ?? null;
+  }
+
+  /**
    * 根据邮箱查找用户
    * @param email 邮箱
    * @returns 用户信息或null

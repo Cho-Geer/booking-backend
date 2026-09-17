@@ -7,16 +7,21 @@
 
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
     UsersModule,
+    EmailModule,
+    // 验证码发送エンドポイントの IP 単位レート制限（発码ハンドラのみ ThrottlerGuard を適用）
+    ThrottlerModule.forRoot([{ ttl: 60 * 1000, limit: 5 }]),
   ],
   controllers: [AuthController],
   providers: [AuthService],

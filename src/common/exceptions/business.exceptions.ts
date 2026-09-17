@@ -174,6 +174,25 @@ export class VerificationCodeException extends BusinessException {
 }
 
 /**
+ * 验证码发送目标邮箱缺失异常
+ * 登录场景：账号未绑定邮箱；注册场景：请求未携带邮箱
+ */
+export class RecipientEmailMissingException extends BusinessException {
+  constructor(message = '账号未绑定邮箱，无法发送验证码', details?: any) {
+    super('RECIPIENT_EMAIL_MISSING', message, HttpStatus.BAD_REQUEST, details);
+  }
+}
+
+/**
+ * 验证码发送频率超限异常（宛先別クールダウン）
+ */
+export class VerificationCodeRateLimitException extends BusinessException {
+  constructor(message = '验证码发送过于频繁，请稍后再试', details?: any) {
+    super('VERIFICATION_CODE_RATE_LIMIT', message, HttpStatus.TOO_MANY_REQUESTS, details);
+  }
+}
+
+/**
  * 系统配置异常
  */
 export class SystemConfigException extends BusinessException {

@@ -1,12 +1,47 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
+import { MaskingUtil } from '../../common/utils/masking.util';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
   constructor(private readonly mailerService: MailerService) {}
+
+  /**
+   * Send verification code email
+   *
+   * 予約通知系（sendBookingConfirmation など）と異なり、送信失敗時に例外を投げる。
+   * 認証コードはメール到達が前提のため、呼び出し側（AuthService）が失敗を検知して
+   * 途中中断（Redis へコードを保存しない）できるようにする。
+   *
+   * @param to Recipient email
+   * @param code 6-digit verification code
+   * @param expiresMinutes Validity period in minutes
+   */
+  async sendVerificationCode(to: string, code: string, expiresMinutes: number): Promise<void> {
+    try {
+      this.logger.log(`Sending verification code email to ${MaskingUtil.maskEmail(to)}`);
+      await this.mailerService.sendMail({
+        to,
+        subject: `验证码 ${code}（${expiresMinutes}分钟内有效） - Booking System`,
+        template: './verification-code',
+        context: {
+          code,
+          expiresMinutes,
+        },
+      });
+      this.logger.log(`Verification code email sent to ${MaskingUtil.maskEmail(to)}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send verification code email to ${MaskingUtil.maskEmail(to)}`,
+        error.stack,
+      );
+      // 認証フローを中断させるため、ここでは例外的に throw する（既存3メソッドは仕様固定で握りつぶし）
+      throw error;
+    }
+  }
 
   /**
    * Send booking confirmation email

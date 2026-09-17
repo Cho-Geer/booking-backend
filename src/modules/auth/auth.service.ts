@@ -18,6 +18,9 @@ import {
   PhoneNumberExistsException,
   EmailExistsException,
   VerificationCodeException,
+  VerificationCodeRateLimitException,
+  RecipientEmailMissingException,
+  ExternalServiceException,
   DatabaseException,
   InvalidPhoneNumberException,
   UserNotActiveException,
@@ -25,8 +28,19 @@ import {
 } from '../../common/exceptions/business.exceptions';
 import { UsersService } from '../users/users.service';
 import { UserStatus, UserType, UserRole } from '../users/dto/user.dto';
+import { EmailService } from '../email/email.service';
+import { MaskingUtil } from '../../common/utils/masking.util';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
+
+/** 验证码有效期（毫秒） */
+const VERIFICATION_CODE_TTL_MS = 5 * 60 * 1000;
+/** 验证码有效期（分钟・メール本文表示用） */
+const VERIFICATION_CODE_EXPIRES_MINUTES = 5;
+/** 同一宛先で許容する验证码误输入回数（超过则作废当前验证码） */
+const VERIFICATION_CODE_MAX_ATTEMPTS = 5;
+/** 发送验证码的宛先别クールダウン（毫秒） */
+const VERIFICATION_CODE_COOLDOWN_MS = 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -38,6 +52,7 @@ export class AuthService {
     private usersService: UsersService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private configService: ConfigService,
+    private emailService: EmailService,
   ) {}
 
   /**
@@ -51,6 +66,7 @@ export class AuthService {
       const isValidCode = await this.validateVerificationCode(
         loginDto.phoneNumber,
         loginDto.verificationCode,
+        VerificationCodeType.LOGIN,
       );
 
       if (!isValidCode) {
@@ -110,6 +126,7 @@ export class AuthService {
       const isValidCode = await this.validateVerificationCode(
         registerDto.phoneNumber,
         registerDto.verificationCode,
+        VerificationCodeType.REGISTER,
       );
 
       if (!isValidCode) {
@@ -213,17 +230,29 @@ export class AuthService {
   }
 
   /**
-   * 发送验证码
+   * 发送验证码（电子邮件）
    * @param phoneNumber 手机号
    * @param type 验证码类型
+   * @param email 邮箱（注册场景必填；登录场景忽略，从数据库读取账号绑定邮箱）
    * @returns 发送结果
    */
-  async sendVerificationCode(phoneNumber: string, type: VerificationCodeType): Promise<ApiResponseDto<void>> {
+  async sendVerificationCode(
+    phoneNumber: string,
+    type: VerificationCodeType,
+    email?: string,
+  ): Promise<ApiResponseDto<void>> {
     try {
-      // 1. 查询手机号是否已存在
+      // 1. 宛先別クールダウン（連投抑止・最短で判定して後続処理を保護）
+      const cooldownKey = this.getVerificationCodeCooldownKey(type, phoneNumber);
+      const cooldown = await this.cacheManager.get<number>(cooldownKey);
+      if (cooldown) {
+        throw new VerificationCodeRateLimitException();
+      }
+
+      // 2. 查询手机号是否已存在
       const existingUser = await this.usersService.findUserByPhoneNumber(phoneNumber);
 
-      // 2. 根据场景进行不同的预检
+      // 3. 根据场景进行不同的预检
       if (type === VerificationCodeType.REGISTER) {
         // 【注册场景】：如果用户已存在，报错阻止
         if (existingUser) {
@@ -241,26 +270,73 @@ export class AuthService {
         }
       }
 
-      // 3. 通用逻辑：生成并保存验证码
-      const verificationCode = this.generateVerificationCode();
-      
-      // 保存验证码到Redis
-      await this.saveVerificationCode(phoneNumber, verificationCode);
+      // 4. 确定收件邮箱
+      const recipientEmail = await this.resolveRecipientEmail(type, phoneNumber, email);
 
-      // TODO: 集成短信服务发送验证码
-      this.logger.log(`[${type}] 验证码已生成: ${phoneNumber} - ${verificationCode}`);
-      
+      // 5. 生成验证码
+      const verificationCode = this.generateVerificationCode();
+
+      // 6. 发送邮件（失败时中断，不写入 Redis，避免出现无法送达的有效码）
+      try {
+        await this.emailService.sendVerificationCode(
+          recipientEmail,
+          verificationCode,
+          VERIFICATION_CODE_EXPIRES_MINUTES,
+        );
+      } catch (error) {
+        this.logger.error(
+          `验证码邮件发送失败: ${MaskingUtil.maskPhoneNumber(phoneNumber)} - ${error.message}`,
+        );
+        throw new ExternalServiceException('邮件服务', '验证码邮件发送失败');
+      }
+
+      // 7. 保存验证码到Redis（素の6桁文字列・type スコープキー）
+      await this.saveVerificationCode(phoneNumber, verificationCode, type);
+
+      // 8. 发送成功后才设置クールダウン
+      await this.cacheManager.set(cooldownKey, 1, VERIFICATION_CODE_COOLDOWN_MS);
+
       return ApiResponseDto.success(null, '验证码发送成功');
     } catch (error) {
-      if (error instanceof PhoneNumberExistsException || 
+      if (error instanceof PhoneNumberExistsException ||
           error instanceof ResourceNotFoundException ||
           error instanceof AuthenticationException ||
-          error instanceof InvalidPhoneNumberException) {
+          error instanceof InvalidPhoneNumberException ||
+          error instanceof VerificationCodeRateLimitException ||
+          error instanceof RecipientEmailMissingException ||
+          error instanceof ExternalServiceException) {
         throw error;
       }
       this.logger.error(`发送验证码失败: ${error.message}`, error.stack);
       throw new DatabaseException('发送验证码失败');
     }
+  }
+
+  /**
+   * 解决验证码的收件邮箱
+   * 注册场景使用请求携带的邮箱；登录场景从数据库读取账号绑定邮箱（不信任请求参数）
+   * @param type 验证码类型
+   * @param phoneNumber 手机号
+   * @param email 请求携带的邮箱
+   * @returns 收件邮箱（必填）
+   */
+  private async resolveRecipientEmail(
+    type: VerificationCodeType,
+    phoneNumber: string,
+    email?: string,
+  ): Promise<string> {
+    if (type === VerificationCodeType.REGISTER) {
+      if (!email) {
+        throw new RecipientEmailMissingException('注册场景下邮箱不能为空');
+      }
+      return email;
+    }
+
+    const boundEmail = await this.usersService.findUserEmailByPhoneNumber(phoneNumber);
+    if (!boundEmail) {
+      throw new RecipientEmailMissingException('该账号未绑定邮箱，无法接收验证码');
+    }
+    return boundEmail;
   }
 
   /**
@@ -505,55 +581,104 @@ export class AuthService {
   }
 
   /**
+   * 验证码在 Redis 中的键（type スコープ）
+   * 例: verification_code:login:13800138000
+   */
+  private getVerificationCodeKey(type: VerificationCodeType, phoneNumber: string): string {
+    return `verification_code:${type}:${phoneNumber}`;
+  }
+
+  /**
+   * 验证码误输入回数的键（type スコープ）
+   */
+  private getVerificationCodeAttemptsKey(type: VerificationCodeType, phoneNumber: string): string {
+    return `verification_code:attempts:${type}:${phoneNumber}`;
+  }
+
+  /**
+   * 发送验证码クールダウンの键（type スコープ）
+   */
+  private getVerificationCodeCooldownKey(type: VerificationCodeType, phoneNumber: string): string {
+    return `verification_code:cooldown:${type}:${phoneNumber}`;
+  }
+
+  /**
    * 验证验证码
+   * 误输入次数达到上限时作废当前验证码；失败メッセージは「不存在」と「不一致」を区別しない
    * @param phoneNumber 手机号
    * @param verificationCode 验证码
+   * @param type 验证码类型
    * @returns 验证结果
    */
   private async validateVerificationCode(
     phoneNumber: string,
     verificationCode: string,
+    type: VerificationCodeType,
   ): Promise<boolean> {
-    const key = `verification_code:${phoneNumber}`;
+    const key = this.getVerificationCodeKey(type, phoneNumber);
+    const attemptsKey = this.getVerificationCodeAttemptsKey(type, phoneNumber);
     const storedCode = await this.cacheManager.get<string>(key);
 
     if (!storedCode) {
-      throw new VerificationCodeException('验证码已过期或不存在');
+      throw new VerificationCodeException('验证码错误或已过期');
     }
 
     if (storedCode !== verificationCode) {
-      throw new VerificationCodeException('验证码错误');
+      // cache-manager に INCR がないため get→set の read-modify-write で试行回数を数える
+      const rawAttempts = await this.cacheManager.get<number | string>(attemptsKey);
+      const attempts = Number(rawAttempts ?? 0) + 1;
+
+      if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+        // 上限超過：验证码を削除して総当たりを阻止（以降は「存在しない」と同じ応答）
+        await this.cacheManager.del(key);
+        await this.cacheManager.del(attemptsKey);
+        this.logger.warn(
+          `验证码尝试次数超限，已作废: ${MaskingUtil.maskPhoneNumber(phoneNumber)}`,
+        );
+        throw new VerificationCodeException('验证码错误或已过期');
+      }
+
+      await this.cacheManager.set(attemptsKey, attempts, VERIFICATION_CODE_TTL_MS);
+      throw new VerificationCodeException('验证码错误或已过期');
     }
 
-    // 验证成功后删除验证码，防止重复使用
+    // 验证成功后删除验证码与试行计数，防止重复使用
     await this.cacheManager.del(key);
-    
+    await this.cacheManager.del(attemptsKey);
+
     return true;
   }
 
   /**
-   * 生成6位数验证码
+   * 生成6位数验证码（暗号論的乱数）
    * @returns 验证码
    */
   private generateVerificationCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
   }
 
   /**
    * 保存验证码到Redis
    * @param phoneNumber 手机号
    * @param verificationCode 验证码
+   * @param type 验证码类型
    */
-  private async saveVerificationCode(phoneNumber: string, verificationCode: string): Promise<void> {
-    const key = `verification_code:${phoneNumber}`;
+  private async saveVerificationCode(
+    phoneNumber: string,
+    verificationCode: string,
+    type: VerificationCodeType,
+  ): Promise<void> {
+    const key = this.getVerificationCodeKey(type, phoneNumber);
     // 设置验证码有效期为5分钟 (300秒)
     // 注意: cache-manager v5+ 使用毫秒作为TTL，而 v4 使用秒
     // 假设使用的是较新版本，或者根据项目配置调整
-    await this.cacheManager.set(key, verificationCode, 300 * 1000);
-    
-    // 开发环境下打印验证码，方便测试
+    await this.cacheManager.set(key, verificationCode, VERIFICATION_CODE_TTL_MS);
+
+    // 开发环境下打印验证码，方便测试（手机号はマスクして出力）
     if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(`保存验证码: ${phoneNumber} - ${verificationCode}`);
+      this.logger.log(
+        `保存验证码: ${MaskingUtil.maskPhoneNumber(phoneNumber)} - ${verificationCode}`,
+      );
     }
   }
 

@@ -14,11 +14,13 @@ import {
   Res,
   Req,
   UseInterceptors,
+  UseGuards,
   ValidationPipe,
   HttpCode,
   HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -92,16 +94,23 @@ export class AuthController {
    */
   @Post('send-verification-code')
   @SkipJwtAuth()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60 * 1000 } })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '发送验证码', description: '向指定手机号发送验证码' })
+  @ApiOperation({
+    summary: '发送验证码',
+    description: '注册场景向请求指定邮箱、登录场景向账号绑定邮箱发送 6 位验证码邮件（5 分钟内有效）',
+  })
   @ApiResponse({ status: 200, description: '验证码发送成功' })
+  @ApiResponse({ status: 400, description: '参数错误（注册场景邮箱必填）或验证码发送失败' })
   @ApiResponse({ status: 429, description: '发送频率过高' })
   async sendVerificationCode(
     @Body(ValidationPipe) sendVerificationCodeDto: SendVerificationCodeDto,
   ): Promise<ApiResponseDto<void>> {
     await this.authService.sendVerificationCode(
       sendVerificationCodeDto.phoneNumber,
-      sendVerificationCodeDto.type
+      sendVerificationCodeDto.type,
+      sendVerificationCodeDto.email,
     );
     return ApiResponseDto.success(null, '验证码发送成功');
   }
