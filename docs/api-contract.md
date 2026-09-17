@@ -152,7 +152,8 @@ List endpoints that paginate use this shape:
 ```json
 {
   "phoneNumber": "13800138000",
-  "type": "login"
+  "type": "register",
+  "email": "alice@example.com"
 }
 ```
 
@@ -170,6 +171,15 @@ List endpoints that paginate use this shape:
 
 - notes:
   `type` must be `login` or `register`.
+  The 6-digit code is delivered by email and is valid for 5 minutes.
+  `email` is required when `type=register` (the code is sent to that address) and must be
+  omitted when `type=login` (the code is sent to the email bound to the account; sending to
+  a request-supplied address is not allowed).
+  Rate limits: `429` when more than 5 requests per 60 s come from the same IP (endpoint-level
+  throttle) or when the same recipient requests again within the 60 s cooldown.
+  Errors: `400 RECIPIENT_EMAIL_MISSING` when no recipient email can be resolved (register
+  without `email`, or login for an account without a bound email), `502
+  EXTERNAL_SERVICE_ERROR` when the email cannot be sent (no code is stored in that case).
 
 ### `POST /v1/auth/refresh`
 

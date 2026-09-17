@@ -154,7 +154,8 @@ http://localhost:3001
 ```json
 {
   "phoneNumber": "13800138000",
-  "type": "login"
+  "type": "register",
+  "email": "alice@example.com"
 }
 ```
 
@@ -172,6 +173,14 @@ http://localhost:3001
 
 - 備考:
   `type` は `login` または `register` でなければならない。
+  6 桁の認証コードはメールで配送され、有効期限は 5 分。
+  `email` は `type=register` では必須（その宛先へ送信）。`type=login` では指定してはならず、
+  アカウントに紐づくメールアドレスへ送信される（リクエスト由来のアドレスへは送らない）。
+  レート制限：同一 IP から 60 秒あたり 5 回を超えると `429`（エンドポイント単位のスロットル）、
+  同一宛先の 60 秒クールダウン中も `429`。
+  エラー：宛先メールを解決できない場合（register で `email` なし、または login で
+  メール未登録のアカウント）は `400 RECIPIENT_EMAIL_MISSING`、メール送信に失敗した場合は
+  `502 EXTERNAL_SERVICE_ERROR`（この場合コードは保存されない）。
 
 ### `POST /v1/auth/refresh`
 
