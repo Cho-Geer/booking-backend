@@ -171,6 +171,24 @@ export class UsersService {
   }
 
   /**
+   * 根据邮箱查找用户（大文字小文字を区別しない）
+   *
+   * 発码前の重複検査専用。DB の email は入力どおり（raw）で保存され得るため、
+   * 完全一致の findUserByEmail では大文字小文字だけが異なる重複を取りこぼす。
+   * DB の unique 制約自体は大文字小文字を区別する（PostgreSQL）ため、
+   * 大小文字違いの重複を防ぐのはこの検索の役割。
+   * @param email 邮箱（呼び出し側で trim + 小文字化した値を想定）
+   * @returns 用户信息或null
+   */
+  async findUserByEmailInsensitive(email: string): Promise<UserResponseDto | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
+
+    return user ? this.mapToResponseDto(user) : null;
+  }
+
+  /**
    * 更新用户信息
    * @param id 用户ID
    * @param updateUserDto 更新数据

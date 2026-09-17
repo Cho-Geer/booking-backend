@@ -339,5 +339,51 @@ describe('AuthController (e2e)', () => {
         await cacheManager.get(`verification_code_email:register:${duplicatePhoneNumber}`),
       ).toBeFalsy();
     });
+
+    it('保存済み邮箱が混合大小文字でも、小文字入力の REGISTER 発码は 409 で拒否する', async () => {
+      const mixedCaseEmail = `Mixed-Case-${Date.now()}@Example.COM`;
+      const lowercaseEmail = mixedCaseEmail.toLowerCase();
+      const fixturePhone = `137${String(Date.now()).slice(-8)}`;
+      const requestPhone = `137${String(Date.now() + 3).slice(-8)}`;
+
+      // fixture: DB に raw（大小文字混在）のまま保存された既存ユーザー
+      await prismaService.user.create({
+        data: {
+          name: 'Mixed Case Fixture',
+          phone: fixturePhone,
+          phoneHash: makePhoneHash(fixturePhone),
+          email: mixedCaseEmail,
+          userType: 'CUSTOMER',
+          status: 'ACTIVE',
+          isVerified: true,
+        },
+      });
+
+      const before = await messageCount();
+
+      // 事前チェックが大小文字を区別しないため、小文字バリアントでも重複として拒否される
+      const response = await request(mailApp.getHttpServer())
+        .post('/v1/auth/send-verification-code')
+        .send({ phoneNumber: requestPhone, type: 'register', email: lowercaseEmail })
+        .expect(409);
+
+      expect(response.body.error.code).toBe('EMAIL_EXISTS');
+      // 表示メッセージは入力どおりの email
+      expect(response.body.message).toBe(`邮箱 ${lowercaseEmail} 已存在`);
+
+      // MailHog に新規メッセージは増えていない
+      expect(await messageCount()).toBe(before);
+
+      // 発码前チェックのため Redis にも何も書かれていない（code / cooldown / email_binding）
+      expect(
+        await cacheManager.get(`verification_code:register:${requestPhone}`),
+      ).toBeFalsy();
+      expect(
+        await cacheManager.get(`verification_code:cooldown:register:${requestPhone}`),
+      ).toBeFalsy();
+      expect(
+        await cacheManager.get(`verification_code_email:register:${requestPhone}`),
+      ).toBeFalsy();
+    });
   });
 });

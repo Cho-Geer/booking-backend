@@ -239,6 +239,46 @@ describe('UsersService', () => {
     });
   });
 
+  describe('findUserByEmailInsensitive（発码前重複検査・大小文字非依存）', () => {
+    const mockUser = {
+      id: '1',
+      name: '测试用户',
+      phone: '138****8000',
+      phoneHash: 'hashed_phone',
+      email: 'User@Example.COM',
+      userType: 'CUSTOMER',
+      status: 'ACTIVE',
+      remarks: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('正規化済み入力で insensitive な findFirst を実行する（完全一致ではない）', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
+
+      const result = await service.findUserByEmailInsensitive('user@example.com');
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('1');
+      // DB の raw 保存値（User@Example.COM）を取りこぼさない大小文字非依存の述語
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'user@example.com', mode: 'insensitive' } },
+      });
+      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('該当ユーザーが存在しない場合は null を返す', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      const result = await service.findUserByEmailInsensitive('nobody@example.com');
+
+      expect(result).toBeNull();
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'nobody@example.com', mode: 'insensitive' } },
+      });
+    });
+  });
+
   describe('updateUser', () => {
     const userId = '1';
     const updateUserDto: UpdateUserDto = {

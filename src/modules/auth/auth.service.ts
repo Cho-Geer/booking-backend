@@ -277,9 +277,11 @@ export class AuthService {
       const recipientEmail = await this.resolveRecipientEmail(type, phoneNumber, email);
 
       // 4b. 【注册场景】発码前にメールの重複を検査する（重複時は送信・保存を一切行わずに中断）
-      //     検査キーは発码時の email バインディング（assertRegisterEmailMatches）と同じ正規化を使う
+      //     検査は大文字小文字を区別しない（trim + 小文字化したうえで insensitive 検索）。
+      //     DB の email は raw 保存され得て unique 制約は大小文字を区別するため、
+      //     完全一致では大小文字違いの重複を取りこぼす。
       if (type === VerificationCodeType.REGISTER) {
-        const existingUserByEmail = await this.usersService.findUserByEmail(
+        const existingUserByEmail = await this.usersService.findUserByEmailInsensitive(
           this.normalizeEmail(recipientEmail),
         );
         if (existingUserByEmail) {

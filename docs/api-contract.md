@@ -189,11 +189,13 @@ List endpoints that paginate use this shape:
   Errors: `400 RECIPIENT_EMAIL_MISSING` when no recipient email can be resolved (register
   without `email`, or login for an account without a bound email), `409 EMAIL_EXISTS`
   (`邮箱 <email> 已存在`) when `type=register` and the address already belongs to an existing
-  account (compared case-insensitively, surrounding whitespace ignored). This duplicate check
-  runs before the code is generated, mailed or stored, so a rejected request sends no email
-  and writes nothing to Redis (no code, cooldown or email binding). While the 60 s cooldown is
-  active, `429` takes precedence over this `409` (the cooldown is evaluated first), and `502
-  EXTERNAL_SERVICE_ERROR` when the email cannot be sent (no code is stored in that case).
+  account. The pre-send duplicate check compares addresses case-insensitively (surrounding
+  whitespace ignored); the database unique constraint on `email` is itself case-sensitive, so
+  this check is what rejects a request whose address differs from an existing one only in case.
+  The check runs before the code is generated, mailed or stored, so a rejected request sends no
+  email and writes nothing to Redis (no code, cooldown or email binding). While the 60 s
+  cooldown is active, `429` takes precedence over this `409` (the cooldown is evaluated first),
+  and `502 EXTERNAL_SERVICE_ERROR` when the email cannot be sent (no code is stored in that case).
 
 ### `POST /v1/auth/refresh`
 
