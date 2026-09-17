@@ -13,6 +13,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 import { EmailService } from '../src/modules/email/email.service';
 import { createHash, randomInt } from 'crypto';
+import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -233,6 +234,110 @@ describe('AuthController (e2e)', () => {
         .expect(201);
 
       expect(response.body.data?.accessToken).toBeDefined();
+    });
+  });
+
+  /**
+   * 実 SMTP（MailHog コンテナ）でメール配送自体を観測する検証。
+   * 上の describe は EmailService をスタブ化しているため「未呼出」しか見えないが、
+   * ここでは実配送をポジティブコントロールとして確認したうえで、
+   * 重複邮箱のときに対象宛先へ新規メッセージが増えないことを MailHog 側で確認する。
+   */
+  describe('REGISTER 邮箱重複 + MailHog（実 SMTP）', () => {
+    jest.setTimeout(120000);
+
+    let mailhogContainer: StartedTestContainer;
+    let messagesUrl: string;
+    let mailApp: INestApplication;
+    let mailAppModule: TestingModule;
+
+    const messageCount = async (): Promise<number> => {
+      const response = await fetch(messagesUrl);
+      const body = (await response.json()) as { total: number };
+      return body.total;
+    };
+
+    beforeAll(async () => {
+      mailhogContainer = await new GenericContainer('mailhog/mailhog')
+        .withExposedPorts(1025, 8025)
+        .withWaitStrategy(Wait.forLogMessage('Serving under http://0.0.0.0:8025/'))
+        .start();
+
+      process.env.MAIL_HOST = mailhogContainer.getHost();
+      process.env.MAIL_PORT = mailhogContainer.getMappedPort(1025).toString();
+      // テンプレート描画を有効化して実メールを生成する（email.e2e-spec と同じ前提）
+      delete process.env.MAIL_DISABLE_TEMPLATES;
+      delete process.env.MAIL_USER;
+      delete process.env.MAIL_SECURE;
+
+      messagesUrl = `http://${mailhogContainer.getHost()}:${mailhogContainer.getMappedPort(8025)}/api/v2/messages`;
+
+      // EmailService をスタブ化せず、実 SMTP 経由でメールを送るアプリ
+      mailAppModule = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
+
+      mailApp = mailAppModule.createNestApplication();
+      mailApp.setGlobalPrefix('v1');
+      mailApp.useGlobalPipes(new ValidationPipe());
+      await mailApp.init();
+    });
+
+    afterAll(async () => {
+      if (mailApp) {
+        await mailApp.close();
+      }
+      if (mailhogContainer) {
+        await mailhogContainer.stop();
+      }
+      // 後続テストに影響しないよう環境変数を戻す
+      process.env.MAIL_HOST = 'localhost';
+      process.env.MAIL_PORT = '1025';
+      process.env.MAIL_DISABLE_TEMPLATES = 'true';
+    });
+
+    it('重複邮箱では 409 EMAIL_EXISTS を返し、MailHog に新規メッセージが増えない', async () => {
+      const registerEmail = `mailhog-${Date.now()}@example.com`;
+      const phoneNumber = `139${String(Date.now()).slice(-8)}`;
+      const duplicatePhoneNumber = `139${String(Date.now() + 1).slice(-8)}`;
+
+      // ポジティブコントロール：通常の発码は実 SMTP で配送され、MailHog のメッセージが増える
+      const before = await messageCount();
+
+      await request(mailApp.getHttpServer())
+        .post('/v1/auth/send-verification-code')
+        .send({ phoneNumber, type: 'register', email: registerEmail })
+        .expect(200);
+
+      let afterSend = before;
+      for (let i = 0; i < 20 && afterSend <= before; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        afterSend = await messageCount();
+      }
+      expect(afterSend).toBeGreaterThan(before);
+
+      // 本題：既存ユーザーの邮箱（beforeEach で作成済み）での REGISTER 発码 → 送信前チェックで 409
+      const response = await request(mailApp.getHttpServer())
+        .post('/v1/auth/send-verification-code')
+        .send({ phoneNumber: duplicatePhoneNumber, type: 'register', email: loginUserEmail })
+        .expect(409);
+
+      expect(response.body.error.code).toBe('EMAIL_EXISTS');
+      expect(response.body.message).toBe(`邮箱 ${loginUserEmail} 已存在`);
+
+      // MailHog に新規メッセージは増えていない
+      expect(await messageCount()).toBe(afterSend);
+
+      // 発码前チェックのため Redis にも何も書かれていない（code / cooldown / email_binding）
+      expect(
+        await cacheManager.get(`verification_code:register:${duplicatePhoneNumber}`),
+      ).toBeFalsy();
+      expect(
+        await cacheManager.get(`verification_code:cooldown:register:${duplicatePhoneNumber}`),
+      ).toBeFalsy();
+      expect(
+        await cacheManager.get(`verification_code_email:register:${duplicatePhoneNumber}`),
+      ).toBeFalsy();
     });
   });
 });

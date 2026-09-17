@@ -46,6 +46,7 @@ const mockUsersService = {
   findUserById: jest.fn(),
   createUser: jest.fn(),
   findUserEmailByPhoneNumber: jest.fn(),
+  findUserByEmail: jest.fn(),
 };
 
 const mockEmailService = {
@@ -94,6 +95,9 @@ describe('AuthService', () => {
 
     service = module.get<AuthService>(AuthService);
     jest.clearAllMocks();
+
+    // メール重複チェックは既定で「重複なし」（個別テストで上書きする）
+    mockUsersService.findUserByEmail.mockResolvedValue(null);
   });
 
   describe('login', () => {
@@ -290,6 +294,83 @@ describe('AuthService', () => {
       ).rejects.toThrow(PhoneNumberExistsException);
     });
 
+    it('注册场景：邮箱已存在应该抛出 EmailExistsException 且不发送邮件・不写入 Redis', async () => {
+      mockCacheManager.get.mockResolvedValue(undefined);
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+      mockUsersService.findUserByEmail.mockResolvedValue({ id: 'existing-user-id' });
+
+      let caught: unknown;
+      try {
+        await service.sendVerificationCode(phoneNumber, VerificationCodeType.REGISTER, registerEmail);
+      } catch (error) {
+        caught = error;
+      }
+
+      // EmailExistsException（409 EMAIL_EXISTS）で、表示用メッセージは入力どおりの email
+      expect(caught).toBeInstanceOf(EmailExistsException);
+      expect((caught as EmailExistsException).message).toBe(`邮箱 ${registerEmail} 已存在`);
+      expect((caught as EmailExistsException).getStatus()).toBe(409);
+
+      // 検査は正規化済みキーで行う（発码時のバインディングと同じ正規化）
+      expect(mockUsersService.findUserByEmail).toHaveBeenCalledWith(registerEmail);
+
+      // メール送信も Redis 書込（code / cooldown / email_binding）も一切行わない
+      expect(mockEmailService.sendVerificationCode).not.toHaveBeenCalled();
+      expect(mockCacheManager.set).not.toHaveBeenCalled();
+      expect(mockCacheManager.del).not.toHaveBeenCalled();
+    });
+
+    it('注册场景：大文字小文字・前後空白の差があっても正規化して重複を拒否する', async () => {
+      const casedEmail = 'New-User@Example.COM';
+
+      mockCacheManager.get.mockResolvedValue(undefined);
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+      mockUsersService.findUserByEmail.mockResolvedValue({ id: 'existing-user-id' });
+
+      await expect(
+        service.sendVerificationCode(phoneNumber, VerificationCodeType.REGISTER, casedEmail)
+      ).rejects.toThrow(`邮箱 ${casedEmail} 已存在`);
+
+      // 検索キーは trim + 小文字化された値
+      expect(mockUsersService.findUserByEmail).toHaveBeenCalledWith('new-user@example.com');
+      expect(mockEmailService.sendVerificationCode).not.toHaveBeenCalled();
+      expect(mockCacheManager.set).not.toHaveBeenCalled();
+    });
+
+    it('注册场景：邮箱が重複しない場合はメール重複チェックを通過して送信する', async () => {
+      mockCacheManager.get.mockResolvedValue(undefined);
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+      mockUsersService.findUserByEmail.mockResolvedValue(null);
+
+      const result = await service.sendVerificationCode(
+        phoneNumber,
+        VerificationCodeType.REGISTER,
+        registerEmail,
+      );
+
+      expect(result.message).toBe('验证码发送成功');
+      expect(mockUsersService.findUserByEmail).toHaveBeenCalledWith(registerEmail);
+      expect(mockEmailService.sendVerificationCode).toHaveBeenCalledTimes(1);
+    });
+
+    it('登录场景：邮箱重複チェックを行わない（発码先は DB のバインディング邮箱）', async () => {
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue({
+        id: 'user-id',
+        status: UserStatus.ACTIVE,
+      });
+      mockUsersService.findUserEmailByPhoneNumber.mockResolvedValue('bound@example.com');
+      mockCacheManager.get.mockResolvedValue(undefined);
+
+      await service.sendVerificationCode(phoneNumber, VerificationCodeType.LOGIN);
+
+      expect(mockUsersService.findUserByEmail).not.toHaveBeenCalled();
+      expect(mockEmailService.sendVerificationCode).toHaveBeenCalledWith(
+        'bound@example.com',
+        expect.stringMatching(/^\d{6}$/),
+        5,
+      );
+    });
+
     it('登录场景：用户不存在应该抛出异常', async () => {
       mockCacheManager.get.mockResolvedValue(undefined);
       mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
@@ -418,6 +499,8 @@ describe('AuthService', () => {
 
       expect(mockEmailService.sendVerificationCode).not.toHaveBeenCalled();
       expect(mockUsersService.findUserByPhoneNumber).not.toHaveBeenCalled();
+      // クールダウン中はメール重複チェックより 429 が優先される（既存の判定順を維持）
+      expect(mockUsersService.findUserByEmail).not.toHaveBeenCalled();
     });
   });
 

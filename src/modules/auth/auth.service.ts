@@ -276,6 +276,18 @@ export class AuthService {
       // 4. 确定收件邮箱
       const recipientEmail = await this.resolveRecipientEmail(type, phoneNumber, email);
 
+      // 4b. 【注册场景】発码前にメールの重複を検査する（重複時は送信・保存を一切行わずに中断）
+      //     検査キーは発码時の email バインディング（assertRegisterEmailMatches）と同じ正規化を使う
+      if (type === VerificationCodeType.REGISTER) {
+        const existingUserByEmail = await this.usersService.findUserByEmail(
+          this.normalizeEmail(recipientEmail),
+        );
+        if (existingUserByEmail) {
+          // 表示メッセージはユーザーが入力したままの email（前後空白のみ除去）
+          throw new EmailExistsException(recipientEmail.trim());
+        }
+      }
+
       // 5. 生成验证码
       const verificationCode = this.generateVerificationCode();
 
@@ -313,6 +325,7 @@ export class AuthService {
       return ApiResponseDto.success(null, '验证码发送成功');
     } catch (error) {
       if (error instanceof PhoneNumberExistsException ||
+          error instanceof EmailExistsException ||
           error instanceof ResourceNotFoundException ||
           error instanceof AuthenticationException ||
           error instanceof InvalidPhoneNumberException ||
