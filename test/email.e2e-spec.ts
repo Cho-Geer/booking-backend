@@ -142,4 +142,33 @@ describe('Email Service (E2E) with TestContainers', () => {
     expect(body).toContain('Test Customer');
     expect(body).toContain('BK-123');
   });
+
+  describe('sendVerificationCode', () => {
+    it('should send a verification code email with the 6-digit code', async () => {
+      const to = 'code-recipient@example.com';
+      const code = '246813';
+
+      await emailService.sendVerificationCode(to, code, 5);
+
+      // Verify email received in Mailhog via API
+      const response = await fetch(`http://${mailhogContainer.getHost()}:${apiPort}/api/v2/messages`);
+      const data = (await response.json()) as MailHogResponse;
+      const messages = data.items;
+
+      expect(messages.length).toBeGreaterThan(0);
+      const latestMessage = messages[0];
+
+      // To ヘッダは生のアドレス（ASCII）で断言
+      expect(latestMessage.Content.Headers.To[0]).toBe(to);
+
+      // 件名は平文コードを含まない（MIME エンコードされ得るため非含有のみ断言）
+      const subject = latestMessage.Content.Headers.Subject[0];
+      expect(subject).toBeDefined();
+      expect(subject).not.toContain(code);
+
+      // 本文（quoted-printable でも数字はリテラル保持される）に 6 桁コードが含まれる
+      const body = latestMessage.Content.Body;
+      expect(body).toContain(code);
+    });
+  });
 });

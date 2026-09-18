@@ -6,7 +6,7 @@
  */
 
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsPhoneNumber, IsOptional, IsEmail, IsEnum } from 'class-validator';
+import { IsNotEmpty, IsString, IsPhoneNumber, IsOptional, IsEmail, IsEnum, ValidateIf } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /**
@@ -72,6 +72,17 @@ export class SendVerificationCodeDto {
   @IsNotEmpty({ message: '验证码类型不能为空' })
   @IsEnum(VerificationCodeType, { message: '类型必须是 login 或 register' })
   type: VerificationCodeType;
+
+  @ApiProperty({
+    description: '邮箱（注册场景必填；登录场景无需传递，验证码将发送至账号绑定邮箱）',
+    example: 'zhangsan@example.com',
+    required: false,
+  })
+  @ValidateIf((o: SendVerificationCodeDto) => o.type === VerificationCodeType.REGISTER)
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsNotEmpty({ message: '注册场景下邮箱不能为空' })
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email?: string;
 }
 
 /**

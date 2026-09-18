@@ -134,4 +134,34 @@ describe('EmailService', () => {
       );
     });
   });
+
+  describe('sendVerificationCode', () => {
+    it('应该成功发送验证码邮件（本文含代码・件名不含代码）', async () => {
+      await service.sendVerificationCode('user@example.com', '123456', 5);
+
+      expect(mockMailerService.sendMail).toHaveBeenCalledWith({
+        to: 'user@example.com',
+        // 件名は平文コードを含まない（メール一覧プレビュー等からの漏洩防止）
+        subject: expect.not.stringContaining('123456'),
+        template: './verification-code',
+        context: {
+          code: '123456',
+          expiresMinutes: 5,
+        },
+      });
+      expect(mockMailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: expect.stringContaining('邮箱验证码'),
+        }),
+      );
+    });
+
+    it('发送失败时应该抛出异常（認証フロー中断用・握りつぶし禁止）', async () => {
+      mockMailerService.sendMail.mockRejectedValueOnce(new Error('SMTP Error'));
+
+      await expect(
+        service.sendVerificationCode('user@example.com', '123456', 5)
+      ).rejects.toThrow('SMTP Error');
+    });
+  });
 });

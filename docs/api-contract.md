@@ -141,6 +141,12 @@ List endpoints that paginate use this shape:
 
 - notes:
   Registration also sets auth cookies on success.
+  The submitted `email` must match (case-insensitively, surrounding whitespace ignored) the
+  address the verification code was issued to by `POST /v1/auth/send-verification-code`
+  (`type=register`); a missing or mismatching `email` returns
+  `400 VERIFICATION_CODE_ERROR` with the message `验证码与邮箱不匹配，请重新获取`
+  **without consuming the code or the attempt counter**, so the user can retry with the
+  correct address until the code expires.
 
 ### `POST /v1/auth/send-verification-code`
 
@@ -152,7 +158,8 @@ List endpoints that paginate use this shape:
 ```json
 {
   "phoneNumber": "13800138000",
-  "type": "login"
+  "type": "register",
+  "email": "alice@example.com"
 }
 ```
 
@@ -170,6 +177,25 @@ List endpoints that paginate use this shape:
 
 - notes:
   `type` must be `login` or `register`.
+  The 6-digit code is delivered by email and is valid for 5 minutes. The subject line never
+  contains the code.
+  `email` is required when `type=register` (the code is sent to that address); for
+  `type=login` it is ignored and the code is sent to the email bound to the account.
+  The address the code was issued to is recorded for 5 minutes so that
+  `POST /v1/auth/register` can require the same address (see that endpoint).
+  Rate limits: `429` when more than 5 requests per 60 s come from the same IP (endpoint-level
+  throttle) or when the same recipient requests again within the 60 s cooldown.
+  Requesting a new code resets the wrong-code attempt counter for that phone number and type.
+  Errors: `400 RECIPIENT_EMAIL_MISSING` when no recipient email can be resolved (register
+  without `email`, or login for an account without a bound email), `409 EMAIL_EXISTS`
+  (`邮箱 <email> 已存在`) when `type=register` and the address already belongs to an existing
+  account. The pre-send duplicate check compares addresses case-insensitively (surrounding
+  whitespace ignored); the database unique constraint on `email` is itself case-sensitive, so
+  this check is what rejects a request whose address differs from an existing one only in case.
+  The check runs before the code is generated, mailed or stored, so a rejected request sends no
+  email and writes nothing to Redis (no code, cooldown or email binding). While the 60 s
+  cooldown is active, `429` takes precedence over this `409` (the cooldown is evaluated first),
+  and `502 EXTERNAL_SERVICE_ERROR` when the email cannot be sent (no code is stored in that case).
 
 ### `POST /v1/auth/refresh`
 

@@ -4,6 +4,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { createHash } from 'crypto';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -202,6 +203,79 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue(null);
 
       await expect(service.findUserById(userId)).rejects.toThrow(ResourceNotFoundException);
+    });
+  });
+
+  describe('findUserEmailByPhoneNumber', () => {
+    const phoneNumber = '13800138000';
+    const expectedPhoneHash = createHash('sha256').update(phoneNumber).digest('hex');
+
+    it('应该按手机号哈希返回未脱敏邮箱', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({ email: 'user@example.com' });
+
+      const result = await service.findUserEmailByPhoneNumber(phoneNumber);
+
+      expect(result).toBe('user@example.com');
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { phoneHash: expectedPhoneHash },
+        select: { email: true },
+      });
+    });
+
+    it('用户不存在时应该返回 null', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.findUserEmailByPhoneNumber(phoneNumber);
+
+      expect(result).toBeNull();
+    });
+
+    it('用户未绑定邮箱时应该返回 null', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({ email: null });
+
+      const result = await service.findUserEmailByPhoneNumber(phoneNumber);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findUserByEmailInsensitive（発码前重複検査・大小文字非依存）', () => {
+    const mockUser = {
+      id: '1',
+      name: '测试用户',
+      phone: '138****8000',
+      phoneHash: 'hashed_phone',
+      email: 'User@Example.COM',
+      userType: 'CUSTOMER',
+      status: 'ACTIVE',
+      remarks: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('正規化済み入力で insensitive な findFirst を実行する（完全一致ではない）', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
+
+      const result = await service.findUserByEmailInsensitive('user@example.com');
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('1');
+      // DB の raw 保存値（User@Example.COM）を取りこぼさない大小文字非依存の述語
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'user@example.com', mode: 'insensitive' } },
+      });
+      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('該当ユーザーが存在しない場合は null を返す', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      const result = await service.findUserByEmailInsensitive('nobody@example.com');
+
+      expect(result).toBeNull();
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'nobody@example.com', mode: 'insensitive' } },
+      });
     });
   });
 
