@@ -128,17 +128,17 @@ async function main() {
     {
       name: '系统管理员',
       phone: '13800138001',
-      email: 'admin@example.com',
+      email: 'zhaoge.tzx@gmail.com',
     },
     {
       name: '运营管理员',
       phone: '13800138002',
-      email: 'operator@example.com',
+      email: 'youdingtianzhaogeyinzuo@gmail.com',
     },
     {
       name: '客服管理员',
       phone: '13800138003',
-      email: 'support@example.com',
+      email: 'zhaogeyinzuo@outlook.com',
     },
   ];
 
