@@ -11,6 +11,10 @@ RUN npm ci
 
 COPY prisma ./prisma
 COPY prisma.config.ts ./
+COPY tsconfig.json ./
+
+# Generate Prisma Client (seed.ts の実行に必須。backend Dockerfile と同様)
+RUN npm run prisma:generate
 
 ENV NODE_ENV=production
 
