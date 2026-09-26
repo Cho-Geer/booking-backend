@@ -165,11 +165,25 @@ export class InvalidEmailException extends BusinessException {
 }
 
 /**
+ * 验证码错误理由（レスポンスの error.details.reason としてフロントの誘導に用いる）
+ * - EXPIRED: 期限切れ・存在しない（上限超過で削除されたコードへの再挑戦も含む）
+ * - EXHAUSTED: 誤入力上限到達でコードを無効化
+ * - MISMATCH: コードは存在するが不一致
+ */
+export type VerificationCodeErrorReason = 'EXPIRED' | 'EXHAUSTED' | 'MISMATCH';
+
+/**
  * 验证码异常
+ * reason を渡した場合のみ error.details = { reason } が設定される（渡さない場合は従来どおり details なし）
  */
 export class VerificationCodeException extends BusinessException {
-  constructor(message = '验证码错误', details?: any) {
-    super('VERIFICATION_CODE_ERROR', message, HttpStatus.BAD_REQUEST, details);
+  constructor(message = '验证码错误', reason?: VerificationCodeErrorReason) {
+    super(
+      'VERIFICATION_CODE_ERROR',
+      message,
+      HttpStatus.BAD_REQUEST,
+      reason ? { reason } : undefined,
+    );
   }
 }
 
