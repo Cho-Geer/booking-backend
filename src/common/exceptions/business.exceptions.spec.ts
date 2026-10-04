@@ -182,6 +182,25 @@ describe('BusinessExceptions', () => {
       expect(exception.errorCode).toBe('VERIFICATION_CODE_ERROR');
       expect(exception.getStatus()).toBe(HttpStatus.BAD_REQUEST);
     });
+
+    it('reason を渡すと error.details = { reason } が設定され、code・message は不変', () => {
+      const exception = new VerificationCodeException('验证码错误或已过期', 'EXHAUSTED');
+
+      expect(exception.errorCode).toBe('VERIFICATION_CODE_ERROR');
+      expect(exception.message).toBe('验证码错误或已过期');
+      expect(exception.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+      expect((exception.getResponse() as any).error).toEqual({
+        code: 'VERIFICATION_CODE_ERROR',
+        message: '验证码错误或已过期',
+        details: { reason: 'EXHAUSTED' },
+      });
+    });
+
+    it('reason を渡さない場合は details が未設定のまま（後方互換）', () => {
+      const exception = new VerificationCodeException('验证码错误');
+
+      expect((exception.getResponse() as any).error.details).toBeUndefined();
+    });
   });
 
   describe('SystemConfigException', () => {

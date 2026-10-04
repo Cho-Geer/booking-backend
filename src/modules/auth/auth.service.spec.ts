@@ -242,6 +242,19 @@ describe('AuthService', () => {
       expect(mockUsersService.createUser).not.toHaveBeenCalled();
     });
 
+    it('email 不一致の VerificationCodeException には reason を付けない（対象外経路）', async () => {
+      mockIssuedEmail('someone-else@example.com');
+      mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
+
+      const error = (await service
+        .register(registerDto)
+        .catch((e) => e)) as VerificationCodeException;
+
+      expect(error).toBeInstanceOf(VerificationCodeException);
+      expect(error.message).toBe('验证码与邮箱不匹配，请重新获取');
+      expect((error.getResponse() as any).error.details).toBeUndefined();
+    });
+
     it('email 未指定の場合は拒否する', async () => {
       mockIssuedEmail(boundEmail);
       mockUsersService.findUserByPhoneNumber.mockResolvedValue(null);
@@ -613,6 +626,49 @@ describe('AuthService', () => {
       mockCacheManager.get.mockResolvedValue(undefined);
 
       await expect(service.login(loginDto)).rejects.toThrow('验证码错误或已过期');
+    });
+
+    it('検証コード不存在（期限切れ）時は reason: EXPIRED が details に設定される', async () => {
+      mockCacheManager.get.mockResolvedValue(undefined);
+
+      const error = (await service.login(loginDto).catch((e) => e)) as VerificationCodeException;
+
+      expect(error).toBeInstanceOf(VerificationCodeException);
+      // T-P3-2: message・error.code は従来どおり（後方互換）
+      expect(error.message).toBe('验证码错误或已过期');
+      expect(error.getResponse()).toMatchObject({
+        error: { code: 'VERIFICATION_CODE_ERROR', details: { reason: 'EXPIRED' } },
+      });
+    });
+
+    it('試行回数上限到達時は reason: EXHAUSTED が details に設定される', async () => {
+      mockCacheManager.get.mockImplementation((key: string) => {
+        if (key === `verification_code:login:${phoneNumber}`) return Promise.resolve('123456');
+        if (key === `verification_code:attempts:login:${phoneNumber}`) return Promise.resolve(4);
+        return Promise.resolve(undefined);
+      });
+
+      const error = (await service.login(loginDto).catch((e) => e)) as VerificationCodeException;
+
+      expect(error).toBeInstanceOf(VerificationCodeException);
+      expect(error.message).toBe('验证码错误或已过期');
+      expect(error.getResponse()).toMatchObject({
+        error: { code: 'VERIFICATION_CODE_ERROR', details: { reason: 'EXHAUSTED' } },
+      });
+    });
+
+    it('通常の不一致時は reason: MISMATCH が details に設定される', async () => {
+      mockCacheManager.get.mockImplementation((key: string) =>
+        Promise.resolve(key === `verification_code:login:${phoneNumber}` ? '123456' : undefined),
+      );
+
+      const error = (await service.login(loginDto).catch((e) => e)) as VerificationCodeException;
+
+      expect(error).toBeInstanceOf(VerificationCodeException);
+      expect(error.message).toBe('验证码错误或已过期');
+      expect(error.getResponse()).toMatchObject({
+        error: { code: 'VERIFICATION_CODE_ERROR', details: { reason: 'MISMATCH' } },
+      });
     });
 
     it('验证成功時は type スコープ键を削除する', async () => {

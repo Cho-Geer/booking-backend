@@ -689,7 +689,8 @@ export class AuthService {
     const storedCode = await this.cacheManager.get<string>(key);
 
     if (!storedCode) {
-      throw new VerificationCodeException('验证码错误或已过期');
+      // 期限切れ・不存在（上限超過で削除された直後の再挑戦もこの分岐で EXPIRED 扱い）
+      throw new VerificationCodeException('验证码错误或已过期', 'EXPIRED');
     }
 
     if (storedCode !== verificationCode) {
@@ -704,11 +705,11 @@ export class AuthService {
         this.logger.warn(
           `验证码尝试次数超限，已作废: ${MaskingUtil.maskPhoneNumber(phoneNumber)}`,
         );
-        throw new VerificationCodeException('验证码错误或已过期');
+        throw new VerificationCodeException('验证码错误或已过期', 'EXHAUSTED');
       }
 
       await this.cacheManager.set(attemptsKey, attempts, VERIFICATION_CODE_TTL_MS);
-      throw new VerificationCodeException('验证码错误或已过期');
+      throw new VerificationCodeException('验证码错误或已过期', 'MISMATCH');
     }
 
     // 验证成功后删除验证码与试行计数，防止重复使用
